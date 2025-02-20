@@ -141,7 +141,7 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     std::cout << "\t[wrote headers]\n" << std::endl;
 
     #if DEBUG
-        for(int i=0;i<15;i++)std::cout << "=";std::cout << "DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl;
+        for(int i=0;i<15;i++)std::cout << "=";std::cout << "HEADER_DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl;
         
         std::cout << "Size of headers: 0x" << std::hex << ntHeaders->OptionalHeader.SizeOfHeaders << " bytes" << std::endl;      
         std::cout << "First address used by headers: 0x" << std::hex << (uintptr_t(remoteMem)) << std::dec << std::endl;
@@ -158,10 +158,6 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
         void* sectionDest = (BYTE*)remoteMem + sectionHeader[i].VirtualAddress;
         void* sectionSrc = localDLL + sectionHeader[i].PointerToRawData;
 
-        // std::cout << "Section Size: 0x" << std::hex << sectionHeader[i].SizeOfRawData << std::dec << " bytes" << std::endl;
-        // std::cout << "Section Dest: 0x" << std::hex << sectionDest << std::dec << std::endl;
-        // std::cout << "Section Src: 0x" << std::hex << sectionSrc << std::dec << std::endl;
-
         if (!WriteProcessMemory(hProcess, sectionDest, sectionSrc, sectionHeader[i].SizeOfRawData, nullptr))
         {
             std::cerr << "Failed to write section " << sectionHeader[i].Name << ": " << GetLastError() << std::endl;
@@ -170,11 +166,19 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
         std::cout << "-> Allocated Section : " << sectionHeader[i].Name << std::endl;
     }   std::cout << "\t[Allocation Done]\n" << std::endl;
 
-    for (int i = 0; i < ntHeaders->FileHeader.NumberOfSections; i++)
-    {
+    #if DEBUG
+    for(int i=0;i<15;i++)std::cout << "=";std::cout << "SECTION_DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl;
+    
+        for (int i = 0; i < ntHeaders->FileHeader.NumberOfSections; i++)
+        {
+            void* sectionDest = (BYTE*)remoteMem + sectionHeader[i].VirtualAddress;
+            std::cout << "-> Section Name: " << sectionHeader[i].Name;
+            std::cout << "Section Size: 0x" << std::hex << sectionHeader[i].SizeOfRawData << " bytes" << std::endl;
+            std::cout << "Section from [0x" << std::hex << (uintptr_t(sectionDest)) << "]  -> [0x" << (uintptr_t(sectionDest) + sectionHeader[i].SizeOfRawData - 1) << "]"<< std::endl;
+        }
 
-
-    }
+    for(int i=0;i<15;i++)std::cout << "=";std::cout << "SECTION_DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl << std::endl;
+#endif
 
 //======================================================================================================================================================================
 
