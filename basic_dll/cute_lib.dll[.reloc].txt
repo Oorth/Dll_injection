@@ -1,0 +1,745 @@
+18001c000 : add al, dh
+18001c002 : add byte ptr [rax], al
+18001c004 : add al, 1
+18001c006 : add byte ptr [rax], al
+18001c008 : pop rax
+18001c009 : movabs byte ptr [0xa278a270a268a260], al
+18001c012 : mov byte ptr [rdx - 0x5d4f5d58], ah
+18001c018 : mov eax, 0xd8a2d0a2
+18001c01d : movabs byte ptr [0xa3c0a3b0a3a0a2e0], al
+18001c026 : shl byte ptr [rbx - 0x5c0f5c20], 1
+18001c02c : add byte ptr [rax + rdx + 0x30a420a4], ah
+18001c033 : movsb byte ptr [rdi], byte ptr [rsi]
+18001c034 : movsb byte ptr [rdi], byte ptr [rsi]
+18001c036 : push rax
+18001c037 : movsb byte ptr [rdi], byte ptr [rsi]
+18001c038 : .byte 0x60
+18001c039 : movsb byte ptr [rdi], byte ptr [rsi]
+18001c03a : jo 0x18001bfe0
+
+18001c03c : and byte ptr [rax + rdx*4 - 0x4f5b5f5c], 0xa4
+18001c044 : shl byte ptr [rax + rdx*8 - 0xf5b1f5c], 0xa4
+18001c04c : add byte ptr [rbp - 0x5adf5af0], ah
+18001c052 : xor byte ptr [rbp - 0x5aaf5ac0], ah
+18001c058 : .byte 0x60
+18001c059 : movsd dword ptr [rdi], dword ptr [rsi]
+18001c05a : jo 0x18001c001
+
+18001c05c : and byte ptr [rbp - 0x5a5f5a70], 0xb0
+18001c063 : movsd dword ptr [rdi], dword ptr [rsi]
+18001c064 : shl byte ptr [rbp - 0x5a1f5a30], 0xf0
+18001c06b : movsd dword ptr [rdi], dword ptr [rsi]
+18001c06c : add byte ptr [rsi - 0x59df59f0], ah
+18001c072 : xor byte ptr [rsi - 0x59af59c0], ah
+18001c078 : .byte 0x60
+18001c079 : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c07a : jo 0x18001c022
+
+18001c07c : and byte ptr [rsi - 0x595f5970], 0xb0
+18001c083 : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c084 : shl byte ptr [rsi - 0x591f5930], 0xf0
+18001c08b : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c08c : add byte ptr [rdi - 0x58df58f0], ah
+18001c092 : xor byte ptr [rdi - 0x58af58c0], ah
+18001c098 : .byte 0x60
+18001c099 : cmpsd dword ptr [rsi], dword ptr [rdi]
+18001c09a : jo 0x18001c043
+
+18001c09c : and byte ptr [rdi - 0x585f5870], 0xb0
+18001c0a3 : cmpsd dword ptr [rsi], dword ptr [rdi]
+18001c0a4 : shl byte ptr [rdi - 0x581f5830], 0xf0
+18001c0ab : cmpsd dword ptr [rsi], dword ptr [rdi]
+18001c0ac : add byte ptr [rax - 0x57df57f0], ch
+18001c0b2 : xor byte ptr [rax - 0x57af57c0], ch
+18001c0b8 : .byte 0x60
+18001c0b9 : test al, 0x70
+18001c0bb : test al, 0x80
+18001c0bd : test al, 0x90
+18001c0bf : test al, 0xa0
+18001c0c1 : test al, 0xb0
+18001c0c3 : test al, 0xc0
+18001c0c5 : test al, 0xd0
+18001c0c7 : test al, 0xe0
+18001c0c9 : test al, 0xf0
+18001c0cb : test al, 0
+18001c0cd : test eax, 0xa920a910
+18001c0d2 : xor byte ptr [rcx - 0x56af56c0], ch
+18001c0d8 : .byte 0x60
+18001c0d9 : test eax, 0xa980a970
+18001c0de : nop 
+18001c0df : test eax, 0xa9b0a9a0
+18001c0e4 : shr byte ptr [rcx - 0x561f5630], 0xf0
+18001c0eb : test eax, 0xaa10aa00
+18001c0f0 : and byte ptr [rdx - 0x55bf55d0], ch
+18001c0f6 : push rax
+18001c0f7 : stosb byte ptr [rdi], al
+18001c0f8 : .byte 0x60
+18001c0f9 : stosb byte ptr [rdi], al
+18001c0fa : jo 0x18001c0a6
+
+18001c0fc : sub byte ptr [rdx - 0x555f5570], 0xb0
+18001c103 : stosb byte ptr [rdi], al
+18001c104 : add byte ptr [rax], al
+18001c106 : add dword ptr [rax], eax
+18001c108 : clc 
+18001c109 : add byte ptr [rax], al
+18001c10b : add byte ptr [rax], ch
+18001c10d : movabs byte ptr [0xa370a368a238a230], al
+18001c116 : js 0x18001c0bb
+
+18001c118 : cwde 
+18001c119 : movabs dword ptr [0xa570a560a3a8a3a0], eax
+18001c122 : and byte ptr [rbp - 0x5a6f5a78], 0x98
+18001c129 : movsd dword ptr [rdi], dword ptr [rsi]
+18001c12a : movabs al, byte ptr [0xc8a5b8a5b0a5a8a5]
+18001c133 : movsd dword ptr [rdi], dword ptr [rsi]
+18001c134 : shl byte ptr [rbp - 0x5a1f5a28], 1
+18001c13a : call 0x178a7b1e4
+
+18001c13f : movsd dword ptr [rdi], dword ptr [rsi]
+18001c140 : add byte ptr [rsi - 0x59d759e8], ah
+18001c146 : cmp byte ptr [rsi - 0x59b759c0], ah
+18001c14c : push rax
+18001c14d : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c14e : pop rax
+18001c14f : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c150 : enter -0x2f59, -0x59
+18001c154 : fsub dword ptr [rdi - 0x57cf5820]
+18001c15a : cmp byte ptr [rax - 0x57b757c0], ch
+18001c160 : push rax
+18001c161 : test al, 0x58
+18001c163 : test al, 0x60
+18001c165 : test al, 0x68
+18001c167 : test al, 0x70
+18001c169 : test al, 0x78
+18001c16b : test al, 0x80
+18001c16d : test al, 0x88
+18001c16f : test al, 0x90
+18001c171 : test al, 0x98
+18001c173 : test al, 0xa0
+18001c175 : test al, 0xa8
+18001c177 : test al, 0xb0
+18001c179 : test al, 0xb8
+18001c17b : test al, 0xc0
+18001c17d : test al, 0xc8
+18001c17f : test al, 0xd0
+18001c181 : test al, 0x10
+18001c183 : scasb al, byte ptr [rdi]
+18001c184 : sbb byte ptr [rsi - 0x51d751e0], ch
+18001c18a : xor byte ptr [rsi - 0x51bf51c8], ch
+18001c190 : scasb al, byte ptr [rdi]
+18001c192 : push rax
+18001c193 : scasb al, byte ptr [rdi]
+18001c194 : pop rax
+18001c195 : scasb al, byte ptr [rdi]
+18001c196 : .byte 0x60
+18001c197 : scasb al, byte ptr [rdi]
+18001c198 : push 0x78ae70ae
+18001c19d : scasb al, byte ptr [rdi]
+18001c19e : sub byte ptr [rsi - 0x516f5178], 0x98
+18001c1a5 : scasb al, byte ptr [rdi]
+18001c1a6 : movabs al, byte ptr [0xc0aeb8aeb0aea8ae]
+18001c1af : scasb al, byte ptr [rdi]
+18001c1b0 : enter -0x2f52, -0x52
+18001c1b4 : fsubr dword ptr [rsi - 0x51175120]
+18001c1ba : .byte 0xf0
+18001c1bb : scasb al, byte ptr [rdi]
+18001c1bc : clc 
+18001c1bd : scasb al, byte ptr [rdi]
+18001c1be : add byte ptr [rdi - 0x50ef50f8], ch
+18001c1c4 : sbb byte ptr [rdi - 0x50d750e0], ch
+18001c1ca : xor byte ptr [rdi - 0x50bf50c8], ch
+18001c1d0 : scasq rax, qword ptr [rdi]
+18001c1d2 : push rax
+18001c1d3 : scasd eax, dword ptr [rdi]
+18001c1d4 : pop rax
+18001c1d5 : scasd eax, dword ptr [rdi]
+18001c1d6 : .byte 0x60
+18001c1d7 : scasd eax, dword ptr [rdi]
+18001c1d8 : jo 0x18001c189
+
+18001c1da : js 0x18001c18b
+
+18001c1dc : sub byte ptr [rdi - 0x506f5078], 0x98
+18001c1e3 : scasd eax, dword ptr [rdi]
+18001c1e4 : movabs al, byte ptr [0xc0afb8afb0afa8af]
+18001c1ed : scasd eax, dword ptr [rdi]
+18001c1ee : enter -0x2f51, -0x51
+18001c1f2 : fsubr dword ptr [rdi - 0x50175020]
+18001c1f8 : .byte 0xf0
+18001c1f9 : scasd eax, dword ptr [rdi]
+18001c1fa : clc 
+18001c1fb : scasd eax, dword ptr [rdi]
+18001c1fc : add byte ptr [rax], dl
+18001c1fe : add dword ptr [rax], eax
+18001c200 : in al, dx
+18001c201 : add byte ptr [rax], al
+18001c203 : add byte ptr [rax], al
+18001c205 : movabs al, byte ptr [0xa020a018a010a008]
+18001c20e : sub byte ptr [rax - 0x5fc75fd0], ah
+18001c214 : movabs al, byte ptr [0xa060a058a050a048]
+18001c21e : push 0x78a070a0
+18001c223 : movabs al, byte ptr [0xa098a090a088a080]
+18001c22c : movabs al, byte ptr [0xc0a0b8a0b0a0a8a0]
+18001c235 : movabs al, byte ptr [0xaab8aaa8aa98a0c8]
+18001c23e : enter -0x2756, -0x56
+18001c242 : call 0x188acbaf1
+
+18001c247 : stosd dword ptr [rdi], eax
+18001c248 : sbb byte ptr [rbx - 0x54c754d8], ch
+18001c24e : stosq qword ptr [rdi], rax
+18001c250 : pop rax
+18001c251 : stosd dword ptr [rdi], eax
+18001c252 : push -0x77548755
+18001c257 : stosd dword ptr [rdi], eax
+18001c258 : cwde 
+18001c259 : stosd dword ptr [rdi], eax
+18001c25a : test al, 0xab
+18001c25c : mov eax, 0xd8abc8ab
+18001c261 : stosd dword ptr [rdi], eax
+18001c262 : call 0x188adbb12
+
+18001c267 : lodsb al, byte ptr [rsi]
+18001c268 : sbb byte ptr [rax + rbp + 0x48ac38ac], ch
+18001c26f : lodsb al, byte ptr [rsi]
+18001c270 : pop rax
+18001c271 : lodsb al, byte ptr [rsi]
+18001c272 : push -0x77538754
+18001c277 : lodsb al, byte ptr [rsi]
+18001c278 : cwde 
+18001c279 : lodsb al, byte ptr [rsi]
+18001c27a : test al, 0xac
+18001c27c : mov eax, 0xd8acc8ac
+18001c281 : lodsb al, byte ptr [rsi]
+18001c282 : call 0x188aebb33
+
+18001c287 : lodsd eax, dword ptr [rsi]
+18001c288 : sbb byte ptr [rbp - 0x52c752d8], ch
+18001c28e : lodsq rax, qword ptr [rsi]
+18001c290 : pop rax
+18001c291 : lodsd eax, dword ptr [rsi]
+18001c292 : push -0x77528753
+18001c297 : lodsd eax, dword ptr [rsi]
+18001c298 : cwde 
+18001c299 : lodsd eax, dword ptr [rsi]
+18001c29a : test al, 0xad
+18001c29c : mov eax, 0xd8adc8ad
+18001c2a1 : lodsd eax, dword ptr [rsi]
+18001c2a2 : call 0x188afbb54
+
+18001c2a7 : scasb al, byte ptr [rdi]
+18001c2a8 : sbb byte ptr [rsi - 0x51c751d8], ch
+18001c2ae : scasb al, byte ptr [rdi]
+18001c2b0 : pop rax
+18001c2b1 : scasb al, byte ptr [rdi]
+18001c2b2 : push -0x77518752
+18001c2b7 : scasb al, byte ptr [rdi]
+18001c2b8 : cwde 
+18001c2b9 : scasb al, byte ptr [rdi]
+18001c2ba : test al, 0xae
+18001c2bc : mov eax, 0xd8aec8ae
+18001c2c1 : scasb al, byte ptr [rdi]
+18001c2c2 : call 0x188b0bb75
+
+18001c2c7 : scasd eax, dword ptr [rdi]
+18001c2c8 : sbb byte ptr [rdi - 0x50c750d8], ch
+18001c2ce : scasq rax, qword ptr [rdi]
+18001c2d0 : pop rax
+18001c2d1 : scasd eax, dword ptr [rdi]
+18001c2d2 : push -0x77508751
+18001c2d7 : scasd eax, dword ptr [rdi]
+18001c2d8 : cwde 
+18001c2d9 : scasd eax, dword ptr [rdi]
+18001c2da : test al, 0xaf
+18001c2dc : mov eax, 0xd8afc8af
+18001c2e1 : scasd eax, dword ptr [rdi]
+18001c2e2 : call 0x180b1bb96
+
+18001c2e7 : add byte ptr [rax], al
+18001c2e9 : and byte ptr [rcx], al
+18001c2eb : add byte ptr [rcx + rax], ah
+18001c2ee : add byte ptr [rax], al
+18001c2f0 : or byte ptr [rax - 0x5fd75fe8], ah
+18001c2f6 : cmp byte ptr [rax - 0x5fa75fb8], ah
+18001c2fc : push -0x775f8760
+18001c301 : movabs al, byte ptr [0xa0c8a0b8a0a8a098]
+18001c30a : fsub dword ptr [rax - 0x5f075f18]
+18001c310 : or byte ptr [rcx - 0x5ed75ee8], ah
+18001c316 : cmp byte ptr [rcx - 0x5ea75eb8], ah
+18001c31c : push -0x775e875f
+18001c321 : movabs eax, dword ptr [0xa1c8a1b8a1a8a198]
+18001c32a : fsub dword ptr [rcx - 0x5e075e18]
+18001c330 : or byte ptr [rdx - 0x5dd75de8], ah
+18001c336 : cmp byte ptr [rdx - 0x5da75db8], ah
+18001c33c : push -0x775d875e
+18001c341 : movabs byte ptr [0xa2c8a2b8a2a8a298], al
+18001c34a : fsub dword ptr [rdx - 0x5d075d18]
+18001c350 : or byte ptr [rbx - 0x5cd75ce8], ah
+18001c356 : cmp byte ptr [rbx - 0x5ca75cb8], ah
+18001c35c : push -0x775c875d
+18001c361 : movabs dword ptr [0xa3c8a3b8a3a8a398], eax
+18001c36a : fsub dword ptr [rbx - 0x5c075c18]
+18001c370 : or byte ptr [rax + rbx + 0x38a428a4], ah
+18001c377 : movsb byte ptr [rdi], byte ptr [rsi]
+18001c378 : movsb byte ptr [rdi], byte ptr [rsi]
+18001c37a : pop rax
+18001c37b : movsb byte ptr [rdi], byte ptr [rsi]
+18001c37c : push -0x775b875c
+18001c381 : movsb byte ptr [rdi], byte ptr [rsi]
+18001c382 : cwde 
+18001c383 : movsb byte ptr [rdi], byte ptr [rsi]
+18001c384 : test al, 0xa4
+18001c386 : mov eax, 0xd8a4c8a4
+18001c38b : movsb byte ptr [rdi], byte ptr [rsi]
+18001c38c : call 0x188a6bc35
+
+18001c391 : movsd dword ptr [rdi], dword ptr [rsi]
+18001c392 : sbb byte ptr [rbp - 0x5ac75ad8], ah
+18001c398 : movsq qword ptr [rdi], qword ptr [rsi]
+18001c39a : pop rax
+18001c39b : movsd dword ptr [rdi], dword ptr [rsi]
+18001c39c : push -0x775a875b
+18001c3a1 : movsd dword ptr [rdi], dword ptr [rsi]
+18001c3a2 : cwde 
+18001c3a3 : movsd dword ptr [rdi], dword ptr [rsi]
+18001c3a4 : test al, 0xa5
+18001c3a6 : mov eax, 0xd8a5c8a5
+18001c3ab : movsd dword ptr [rdi], dword ptr [rsi]
+18001c3ac : call 0x188a7bc56
+
+18001c3b1 : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c3b2 : sbb byte ptr [rsi - 0x59c759d8], ah
+18001c3b8 : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c3ba : pop rax
+18001c3bb : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c3bc : push -0x7759875a
+18001c3c1 : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c3c2 : cwde 
+18001c3c3 : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c3c4 : test al, 0xa6
+18001c3c6 : mov eax, 0xd8a6c8a6
+18001c3cb : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c3cc : call 0x188a8bc77
+
+18001c3d1 : cmpsd dword ptr [rsi], dword ptr [rdi]
+18001c3d2 : sbb byte ptr [rdi - 0x58c758d8], ah
+18001c3d8 : cmpsq qword ptr [rsi], qword ptr [rdi]
+18001c3da : pop rax
+18001c3db : cmpsd dword ptr [rsi], dword ptr [rdi]
+18001c3dc : push -0x77588759
+18001c3e1 : cmpsd dword ptr [rsi], dword ptr [rdi]
+18001c3e2 : cwde 
+18001c3e3 : cmpsd dword ptr [rsi], dword ptr [rdi]
+18001c3e4 : test al, 0xa7
+18001c3e6 : mov eax, 0xd8a7c8a7
+18001c3eb : cmpsd dword ptr [rsi], dword ptr [rdi]
+18001c3ec : call 0x188a9bc98
+
+18001c3f1 : test al, 0x18
+18001c3f3 : test al, 0x28
+18001c3f5 : test al, 0x38
+18001c3f7 : test al, 0x48
+18001c3f9 : test al, 0x58
+18001c3fb : test al, 0x68
+18001c3fd : test al, 0x78
+18001c3ff : test al, 0x88
+18001c401 : test al, 0x98
+18001c403 : test al, 0xa8
+18001c405 : test al, 0xb8
+18001c407 : test al, 0xc8
+18001c409 : test al, 0
+18001c40b : add byte ptr [rax], al
+18001c40d : xor byte ptr [rcx], al
+18001c40f : add byte ptr [rcx + rax], ch
+18001c413 : add al, dh
+18001c415 : movsb byte ptr [rdi], byte ptr [rsi]
+18001c416 : add byte ptr [rbp - 0x5adf5af0], ah
+18001c41c : xor byte ptr [rbp - 0x5aaf5ac0], ah
+18001c422 : .byte 0x60
+18001c423 : movsd dword ptr [rdi], dword ptr [rsi]
+18001c424 : jo 0x18001c3cb
+
+18001c426 : and byte ptr [rbp - 0x5a5f5a70], 0xb0
+18001c42d : movsd dword ptr [rdi], dword ptr [rsi]
+18001c42e : shl byte ptr [rbp - 0x5a1f5a30], 0xf0
+18001c435 : movsd dword ptr [rdi], dword ptr [rsi]
+18001c436 : add byte ptr [rsi - 0x59df59f0], ah
+18001c43c : xor byte ptr [rsi - 0x59af59c0], ah
+18001c442 : .byte 0x60
+18001c443 : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c444 : jo 0x18001c3ec
+
+18001c446 : and byte ptr [rsi - 0x595f5970], 0xb0
+18001c44d : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c44e : shl byte ptr [rsi - 0x591f5930], 0xf0
+18001c455 : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c456 : add byte ptr [rdi - 0x58df58f0], ah
+18001c45c : xor byte ptr [rdi - 0x58af58c0], ah
+18001c462 : .byte 0x60
+18001c463 : cmpsd dword ptr [rsi], dword ptr [rdi]
+18001c464 : jo 0x18001c40d
+
+18001c466 : and byte ptr [rdi - 0x585f5870], 0xb0
+18001c46d : cmpsd dword ptr [rsi], dword ptr [rdi]
+18001c46e : shl byte ptr [rdi - 0x581f5830], 0xf0
+18001c475 : cmpsd dword ptr [rsi], dword ptr [rdi]
+18001c476 : add byte ptr [rax - 0x57df57f0], ch
+18001c47c : xor byte ptr [rax - 0x57af57c0], ch
+18001c482 : .byte 0x60
+18001c483 : test al, 0x70
+18001c485 : test al, 0x80
+18001c487 : test al, 0x90
+18001c489 : test al, 0xa0
+18001c48b : test al, 0xb0
+18001c48d : test al, 0xc0
+18001c48f : test al, 0xd0
+18001c491 : test al, 0xe0
+18001c493 : test al, 0xf0
+18001c495 : test al, 0
+18001c497 : test eax, 0xa920a910
+18001c49c : xor byte ptr [rcx - 0x56af56c0], ch
+18001c4a2 : .byte 0x60
+18001c4a3 : test eax, 0xa980a970
+18001c4a8 : nop 
+18001c4a9 : test eax, 0xa9b0a9a0
+18001c4ae : shr byte ptr [rcx - 0x561f5630], 0xf0
+18001c4b5 : test eax, 0xaa10aa00
+18001c4ba : and byte ptr [rdx - 0x55bf55d0], ch
+18001c4c0 : push rax
+18001c4c1 : stosb byte ptr [rdi], al
+18001c4c2 : .byte 0x60
+18001c4c3 : stosb byte ptr [rdi], al
+18001c4c4 : jo 0x18001c470
+
+18001c4c6 : sub byte ptr [rdx - 0x555f5570], 0xb0
+18001c4cd : stosb byte ptr [rdi], al
+18001c4ce : shr byte ptr [rdx - 0x551f5530], 0xf0
+18001c4d5 : stosb byte ptr [rdi], al
+18001c4d6 : add byte ptr [rbx - 0x54df54f0], ch
+18001c4dc : xor byte ptr [rbx - 0x54af54c0], ch
+18001c4e2 : .byte 0x60
+18001c4e3 : stosd dword ptr [rdi], eax
+18001c4e4 : jo 0x18001c491
+
+18001c4e6 : sub byte ptr [rbx - 0x545f5470], 0xb0
+18001c4ed : stosd dword ptr [rdi], eax
+18001c4ee : shr byte ptr [rbx - 0x541f5430], 0xf0
+18001c4f5 : stosd dword ptr [rdi], eax
+18001c4f6 : add byte ptr [rax + rdx + 0x30ac20ac], ch
+18001c4fd : lodsb al, byte ptr [rsi]
+18001c4fe : lodsb al, byte ptr [rsi]
+18001c500 : push rax
+18001c501 : lodsb al, byte ptr [rsi]
+18001c502 : .byte 0x60
+18001c503 : lodsb al, byte ptr [rsi]
+18001c504 : jo 0x18001c4b2
+
+18001c506 : sub byte ptr [rax + rdx*4 - 0x4f535f54], 0xac
+18001c50e : shr byte ptr [rax + rdx*8 - 0xf531f54], 0xac
+18001c516 : add byte ptr [rbp - 0x52df52f0], ch
+18001c51c : xor byte ptr [rbp - 0x52af52c0], ch
+18001c522 : .byte 0x60
+18001c523 : lodsd eax, dword ptr [rsi]
+18001c524 : jo 0x18001c4d3
+
+18001c526 : sub byte ptr [rbp - 0x525f5270], 0xb0
+18001c52d : lodsd eax, dword ptr [rsi]
+18001c52e : shr byte ptr [rbp - 0x521f5230], 0xf0
+18001c535 : lodsd eax, dword ptr [rsi]
+18001c536 : add byte ptr [rsi - 0x51df51f0], ch
+18001c53c : xor byte ptr [rsi - 0x51af51c0], ch
+18001c542 : .byte 0x60
+18001c543 : scasb al, byte ptr [rdi]
+18001c544 : jo 0x18001c4f4
+
+18001c546 : sub byte ptr [rsi - 0x515f5170], 0xb0
+18001c54d : scasb al, byte ptr [rdi]
+18001c54e : shr byte ptr [rsi - 0x511f5130], 0xf0
+18001c555 : scasb al, byte ptr [rdi]
+18001c556 : add byte ptr [rdi - 0x50df50f0], ch
+18001c55c : xor byte ptr [rdi - 0x50af50c0], ch
+18001c562 : .byte 0x60
+18001c563 : scasd eax, dword ptr [rdi]
+18001c564 : jo 0x18001c515
+
+18001c566 : sub byte ptr [rdi - 0x505f5070], 0xb0
+18001c56d : scasd eax, dword ptr [rdi]
+18001c56e : shr byte ptr [rdi - 0x501f5030], 0xf0
+18001c575 : scasd eax, dword ptr [rdi]
+18001c576 : add byte ptr [rax], al
+18001c578 : add byte ptr [rax + 1], al
+18001c57b : add byte ptr [rax], dh
+18001c57e : add byte ptr [rax], al
+18001c580 : add byte ptr [rax - 0x5fdf5ff0], ah
+18001c586 : xor byte ptr [rax - 0x5faf5fc0], ah
+18001c58c : .byte 0x60
+18001c58d : movabs al, byte ptr [0xa0a0a090a080a070]
+18001c596 : mov al, 0xa0
+18001c598 : shl byte ptr [rax - 0x5f1f5f30], 0xf0
+18001c59f : movabs al, byte ptr [0xa130a120a110a100]
+18001c5a8 : movabs eax, dword ptr [0xa180a170a160a150]
+18001c5b2 : nop 
+18001c5b3 : movabs eax, dword ptr [0xa1d0a1c0a1b0a1a0]
+18001c5bc : loopne 0x18001c55f
+
+18001c5be : .byte 0xf0
+18001c5bf : movabs eax, dword ptr [0xa230a220a210a200]
+18001c5c8 : movabs byte ptr [0xa280a270a260a250], al
+18001c5d2 : nop 
+18001c5d3 : movabs byte ptr [0xa2d0a2c0a2b0a2a0], al
+18001c5dc : loopne 0x18001c580
+
+18001c5de : .byte 0xf0
+18001c5df : movabs byte ptr [0xa320a310a300], al
+18001c5e8 : add byte ptr [rax + 1], ah
+18001c5eb : add byte ptr [rax + rax], ah
+18001c5ee : add byte ptr [rax], al
+18001c5f0 : .byte 0x60
+18001c5f1 : test al, 0x68
+18001c5f3 : test al, 0x70
+18001c5f5 : test al, 0x78
+18001c5f7 : test al, 0xd8
+18001c5f9 : test al, 0xf0
+18001c5fb : test al, 0xf8
+18001c5fd : test al, 0x80
+18001c5ff : test eax, 0xa9a0a998
+18001c604 : test al, 0xa9
+18001c606 : mov al, 0xa9
+18001c608 : mov eax, 0xa9
+18001c60d : nop 
+18001c60e : add dword ptr [rax], eax
+18001c610 : add byte ptr [rax], r8b
+18001c613 : add byte ptr [rax], ah
+18001c615 : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c616 : push -0x5759775a
+18001c61b : cmpsb byte ptr [rsi], byte ptr [rdi]
+18001c61c : enter -0x175a, -0x5a
+18001c620 : sbb byte ptr [rdi - 0x58c758d0], ah
+18001c626 : cmpsd dword ptr [rsi], dword ptr [rdi]
+18001c628 : js 0x18001c5d1
+
+18001c62a : and byte ptr [rdi - 0x57575760], 0xb0
+18001c631 : test al, 0xb8
+18001c633 : test al, 0xc0
+18001c635 : test al, 0xc8
+18001c637 : test al, 0xd0
+18001c639 : test al, 0xd8
+18001c63b : test al, 0xe0
+18001c63d : test al, 0xe8
+18001c63f : test al, 0xf8
+18001c641 : test al, 0
+18001c643 : test eax, 0xa910a908
+18001c648 : sbb byte ptr [rcx - 0x56d756e0], ch
+18001c64e : xor byte ptr [rcx - 0x55675590], ch
+18001c654 : shr byte ptr [rdx], 0
+18001c65b : add byte ptr [rax], al
+18001c65d : add byte ptr [rax], al
+18001c65f : add byte ptr [rax], al
+18001c661 : add byte ptr [rax], al
+18001c663 : add byte ptr [rax], al
+18001c665 : add byte ptr [rax], al
+18001c667 : add byte ptr [rax], al
+18001c669 : add byte ptr [rax], al
+18001c66b : add byte ptr [rax], al
+18001c66d : add byte ptr [rax], al
+18001c66f : add byte ptr [rax], al
+18001c671 : add byte ptr [rax], al
+18001c673 : add byte ptr [rax], al
+18001c675 : add byte ptr [rax], al
+18001c677 : add byte ptr [rax], al
+18001c679 : add byte ptr [rax], al
+18001c67b : add byte ptr [rax], al
+18001c67d : add byte ptr [rax], al
+18001c67f : add byte ptr [rax], al
+18001c681 : add byte ptr [rax], al
+18001c683 : add byte ptr [rax], al
+18001c685 : add byte ptr [rax], al
+18001c687 : add byte ptr [rax], al
+18001c689 : add byte ptr [rax], al
+18001c68b : add byte ptr [rax], al
+18001c68d : add byte ptr [rax], al
+18001c68f : add byte ptr [rax], al
+18001c691 : add byte ptr [rax], al
+18001c693 : add byte ptr [rax], al
+18001c695 : add byte ptr [rax], al
+18001c697 : add byte ptr [rax], al
+18001c699 : add byte ptr [rax], al
+18001c69b : add byte ptr [rax], al
+18001c69d : add byte ptr [rax], al
+18001c69f : add byte ptr [rax], al
+18001c6a1 : add byte ptr [rax], al
+18001c6a3 : add byte ptr [rax], al
+18001c6a5 : add byte ptr [rax], al
+18001c6a7 : add byte ptr [rax], al
+18001c6a9 : add byte ptr [rax], al
+18001c6ab : add byte ptr [rax], al
+18001c6ad : add byte ptr [rax], al
+18001c6af : add byte ptr [rax], al
+18001c6b1 : add byte ptr [rax], al
+18001c6b3 : add byte ptr [rax], al
+18001c6b5 : add byte ptr [rax], al
+18001c6b7 : add byte ptr [rax], al
+18001c6b9 : add byte ptr [rax], al
+18001c6bb : add byte ptr [rax], al
+18001c6bd : add byte ptr [rax], al
+18001c6bf : add byte ptr [rax], al
+18001c6c1 : add byte ptr [rax], al
+18001c6c3 : add byte ptr [rax], al
+18001c6c5 : add byte ptr [rax], al
+18001c6c7 : add byte ptr [rax], al
+18001c6c9 : add byte ptr [rax], al
+18001c6cb : add byte ptr [rax], al
+18001c6cd : add byte ptr [rax], al
+18001c6cf : add byte ptr [rax], al
+18001c6d1 : add byte ptr [rax], al
+18001c6d3 : add byte ptr [rax], al
+18001c6d5 : add byte ptr [rax], al
+18001c6d7 : add byte ptr [rax], al
+18001c6d9 : add byte ptr [rax], al
+18001c6db : add byte ptr [rax], al
+18001c6dd : add byte ptr [rax], al
+18001c6df : add byte ptr [rax], al
+18001c6e1 : add byte ptr [rax], al
+18001c6e3 : add byte ptr [rax], al
+18001c6e5 : add byte ptr [rax], al
+18001c6e7 : add byte ptr [rax], al
+18001c6e9 : add byte ptr [rax], al
+18001c6eb : add byte ptr [rax], al
+18001c6ed : add byte ptr [rax], al
+18001c6ef : add byte ptr [rax], al
+18001c6f1 : add byte ptr [rax], al
+18001c6f3 : add byte ptr [rax], al
+18001c6f5 : add byte ptr [rax], al
+18001c6f7 : add byte ptr [rax], al
+18001c6f9 : add byte ptr [rax], al
+18001c6fb : add byte ptr [rax], al
+18001c6fd : add byte ptr [rax], al
+18001c6ff : add byte ptr [rax], al
+18001c701 : add byte ptr [rax], al
+18001c703 : add byte ptr [rax], al
+18001c705 : add byte ptr [rax], al
+18001c707 : add byte ptr [rax], al
+18001c709 : add byte ptr [rax], al
+18001c70b : add byte ptr [rax], al
+18001c70d : add byte ptr [rax], al
+18001c70f : add byte ptr [rax], al
+18001c711 : add byte ptr [rax], al
+18001c713 : add byte ptr [rax], al
+18001c715 : add byte ptr [rax], al
+18001c717 : add byte ptr [rax], al
+18001c719 : add byte ptr [rax], al
+18001c71b : add byte ptr [rax], al
+18001c71d : add byte ptr [rax], al
+18001c71f : add byte ptr [rax], al
+18001c721 : add byte ptr [rax], al
+18001c723 : add byte ptr [rax], al
+18001c725 : add byte ptr [rax], al
+18001c727 : add byte ptr [rax], al
+18001c729 : add byte ptr [rax], al
+18001c72b : add byte ptr [rax], al
+18001c72d : add byte ptr [rax], al
+18001c72f : add byte ptr [rax], al
+18001c731 : add byte ptr [rax], al
+18001c733 : add byte ptr [rax], al
+18001c735 : add byte ptr [rax], al
+18001c737 : add byte ptr [rax], al
+18001c739 : add byte ptr [rax], al
+18001c73b : add byte ptr [rax], al
+18001c73d : add byte ptr [rax], al
+18001c73f : add byte ptr [rax], al
+18001c741 : add byte ptr [rax], al
+18001c743 : add byte ptr [rax], al
+18001c745 : add byte ptr [rax], al
+18001c747 : add byte ptr [rax], al
+18001c749 : add byte ptr [rax], al
+18001c74b : add byte ptr [rax], al
+18001c74d : add byte ptr [rax], al
+18001c74f : add byte ptr [rax], al
+18001c751 : add byte ptr [rax], al
+18001c753 : add byte ptr [rax], al
+18001c755 : add byte ptr [rax], al
+18001c757 : add byte ptr [rax], al
+18001c759 : add byte ptr [rax], al
+18001c75b : add byte ptr [rax], al
+18001c75d : add byte ptr [rax], al
+18001c75f : add byte ptr [rax], al
+18001c761 : add byte ptr [rax], al
+18001c763 : add byte ptr [rax], al
+18001c765 : add byte ptr [rax], al
+18001c767 : add byte ptr [rax], al
+18001c769 : add byte ptr [rax], al
+18001c76b : add byte ptr [rax], al
+18001c76d : add byte ptr [rax], al
+18001c76f : add byte ptr [rax], al
+18001c771 : add byte ptr [rax], al
+18001c773 : add byte ptr [rax], al
+18001c775 : add byte ptr [rax], al
+18001c777 : add byte ptr [rax], al
+18001c779 : add byte ptr [rax], al
+18001c77b : add byte ptr [rax], al
+18001c77d : add byte ptr [rax], al
+18001c77f : add byte ptr [rax], al
+18001c781 : add byte ptr [rax], al
+18001c783 : add byte ptr [rax], al
+18001c785 : add byte ptr [rax], al
+18001c787 : add byte ptr [rax], al
+18001c789 : add byte ptr [rax], al
+18001c78b : add byte ptr [rax], al
+18001c78d : add byte ptr [rax], al
+18001c78f : add byte ptr [rax], al
+18001c791 : add byte ptr [rax], al
+18001c793 : add byte ptr [rax], al
+18001c795 : add byte ptr [rax], al
+18001c797 : add byte ptr [rax], al
+18001c799 : add byte ptr [rax], al
+18001c79b : add byte ptr [rax], al
+18001c79d : add byte ptr [rax], al
+18001c79f : add byte ptr [rax], al
+18001c7a1 : add byte ptr [rax], al
+18001c7a3 : add byte ptr [rax], al
+18001c7a5 : add byte ptr [rax], al
+18001c7a7 : add byte ptr [rax], al
+18001c7a9 : add byte ptr [rax], al
+18001c7ab : add byte ptr [rax], al
+18001c7ad : add byte ptr [rax], al
+18001c7af : add byte ptr [rax], al
+18001c7b1 : add byte ptr [rax], al
+18001c7b3 : add byte ptr [rax], al
+18001c7b5 : add byte ptr [rax], al
+18001c7b7 : add byte ptr [rax], al
+18001c7b9 : add byte ptr [rax], al
+18001c7bb : add byte ptr [rax], al
+18001c7bd : add byte ptr [rax], al
+18001c7bf : add byte ptr [rax], al
+18001c7c1 : add byte ptr [rax], al
+18001c7c3 : add byte ptr [rax], al
+18001c7c5 : add byte ptr [rax], al
+18001c7c7 : add byte ptr [rax], al
+18001c7c9 : add byte ptr [rax], al
+18001c7cb : add byte ptr [rax], al
+18001c7cd : add byte ptr [rax], al
+18001c7cf : add byte ptr [rax], al
+18001c7d1 : add byte ptr [rax], al
+18001c7d3 : add byte ptr [rax], al
+18001c7d5 : add byte ptr [rax], al
+18001c7d7 : add byte ptr [rax], al
+18001c7d9 : add byte ptr [rax], al
+18001c7db : add byte ptr [rax], al
+18001c7dd : add byte ptr [rax], al
+18001c7df : add byte ptr [rax], al
+18001c7e1 : add byte ptr [rax], al
+18001c7e3 : add byte ptr [rax], al
+18001c7e5 : add byte ptr [rax], al
+18001c7e7 : add byte ptr [rax], al
+18001c7e9 : add byte ptr [rax], al
+18001c7eb : add byte ptr [rax], al
+18001c7ed : add byte ptr [rax], al
+18001c7ef : add byte ptr [rax], al
+18001c7f1 : add byte ptr [rax], al
+18001c7f3 : add byte ptr [rax], al
+18001c7f5 : add byte ptr [rax], al
+18001c7f7 : add byte ptr [rax], al
+18001c7f9 : add byte ptr [rax], al
+18001c7fb : add byte ptr [rax], al
+18001c7fd : add byte ptr [rax], al
+18001c7ff : .byte 0x00
