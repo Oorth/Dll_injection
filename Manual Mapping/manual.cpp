@@ -4,7 +4,10 @@
 #include <vector>
 #include <tlhelp32.h>
 
-#define DEBUG 1
+#define DEBUG_HEADERS 0
+#define DEBUG_SECTIONS 0
+#define DEBUG_RELOC 0
+#define DEBUG_IMPORTS 1
 
 LPCSTR dllPath_n = "network_lib.dll";
 
@@ -95,10 +98,15 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     IMAGE_NT_HEADERS* ntHeaders = (IMAGE_NT_HEADERS*)(localDLL + dosHeader->e_lfanew);
     IMAGE_SECTION_HEADER* sectionHeader = (IMAGE_SECTION_HEADER*)((BYTE*)ntHeaders + sizeof(IMAGE_NT_HEADERS));
 
+    
     std::vector<BYTE> fullImage(ntHeaders->OptionalHeader.SizeOfImage, 0);
+    
     
     IMAGE_DATA_DIRECTORY relocDir = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC];
     IMAGE_BASE_RELOCATION* reloc = (IMAGE_BASE_RELOCATION*)(fullImage.data() + relocDir.VirtualAddress);
+
+    IMAGE_DATA_DIRECTORY importDir = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+    IMAGE_IMPORT_DESCRIPTOR* importDesc = (IMAGE_IMPORT_DESCRIPTOR*)(fullImage.data() + importDir.VirtualAddress);
     
     //===================================================================================================
 
@@ -117,7 +125,7 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     memcpy(fullImage.data(), localDLL, ntHeaders->OptionalHeader.SizeOfHeaders);
     std::cout << "\t[wrote headers]\n" << std::endl;
 
-    #if DEBUG
+    #if DEBUG_HEADERS
         for(int i=0;i<15;i++)std::cout << "=";std::cout << "HEADER_DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl;
         
         std::cout << "Size of headers: 0x" << std::hex << ntHeaders->OptionalHeader.SizeOfHeaders << " bytes" << std::endl;      
@@ -139,7 +147,7 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
         std::cout << "-> Allocated Section : " << sectionHeader[i].Name << std::endl;
     }   std::cout << "\t[Allocation Done]\n" << std::endl;
 
-    #if DEBUG
+    #if DEBUG_SECTIONS
     for(int i=0;i<15;i++)std::cout << "=";std::cout << "SECTION_DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl;
     
         for (int i = 0; i < ntHeaders->FileHeader.NumberOfSections; i++)
@@ -177,25 +185,35 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
 
     if ((LPVOID)ntHeaders->OptionalHeader.ImageBase != remoteMem)
     {
-        std::cout << "Base Change -> \nExpected: 0x" << std::hex << ntHeaders->OptionalHeader.ImageBase << " Actual: 0x" << remoteMem << std::endl; 
+        std::cout << "Base Change -> \nExpected: 0x" << std::hex << ntHeaders->OptionalHeader.ImageBase << " Actual: 0x" << remoteMem; 
     
         if (relocDir.Size)
         {
             SIZE_T delta = (SIZE_T)remoteMem - ntHeaders->OptionalHeader.ImageBase;
-            std::cout << "\tDelta: [0x" << std::hex << delta << "]" << std::endl; 
+            std::cout << std::endl << "\tDelta: [0x" << std::hex << delta << "]" << std::endl; 
     
             while (reloc->VirtualAddress)
             {
                 int numEntries = (reloc->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / sizeof(WORD);
-                std::cout << "No of Entries in reloc = " << numEntries << std::endl << std::endl;
                 WORD* entry = (WORD*)((BYTE*)reloc + sizeof(IMAGE_BASE_RELOCATION));
-    
+                
+                #if DEBUG_RELOC
+                    std::cout << "No of Entries in reloc = " << std::hex << numEntries << std::endl << std::endl;
+                #endif
+
                 for (int i = 0; i < numEntries; i++)
                 {
                     int type = entry[i] >> 12;
                     int offset = entry[i] & 0xFFF;
     
-                    if (type == IMAGE_REL_BASED_ABSOLUTE) continue;
+                    if (type == IMAGE_REL_BASED_ABSOLUTE)
+                    {
+                        #if DEBUG_RELOC
+                            std::cout << "\t[===========Absolute relocation found. Skipping...============]" << std::endl << std::endl;
+                        #endif
+                            
+                        continue;
+                    }
                     else if (type == IMAGE_REL_BASED_HIGHLOW || type == IMAGE_REL_BASED_DIR64)
                     {
                         DWORD_PTR* patchAddr = (DWORD_PTR*)((BYTE*)fullImage.data() + reloc->VirtualAddress + offset);
@@ -203,7 +221,7 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
                         DWORD_PTR newValue = oldValue + delta;
                         *patchAddr = newValue;
                         
-                        #if DEBUG 
+                        #if DEBUG_RELOC 
                             std::cout << "Patching Address: 0x" << std::hex << patchAddr << "  [0x" << oldValue << "] -> [0x" << newValue << "]   [" << i + 1 << "/" << numEntries << "]" << std::dec << std::endl;
                         #endif
                     }
@@ -212,52 +230,82 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
                 reloc = (IMAGE_BASE_RELOCATION*)((BYTE*)reloc + reloc->SizeOfBlock);
             }
         }
-        std::cout << "Relocation completed." << std::endl;
+        std::cout << "\t[Relocation completed]" << std::endl;
     }
-    else std::cout << "No need to relocate" << std::endl;
-    
-
+    else std::cout << "\t[No need to relocate]" << std::endl;
 
 //======================================================================================================================================================================
 
-    // // Resolve imports
-    // IMAGE_DATA_DIRECTORY importDir = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
-    // if (importDir.Size)
-    // {
-    //     IMAGE_IMPORT_DESCRIPTOR* importDesc = (IMAGE_IMPORT_DESCRIPTOR*)(localDLL + importDir.VirtualAddress);
-    //     while (importDesc->Name)
-    //     {
-    //         char* moduleName = (char*)(localDLL + importDesc->Name);
-    //         HMODULE hModule = LoadLibraryA(moduleName);
-    //         if (!hModule)
-    //         {
-    //             std::cerr << "Failed to load module: " << moduleName << std::endl;
-    //             return false;
-    //         }
+// Resolve imports
+    
+    std::cout << std::endl << "-> Resolving imports" << std::endl << "Size: 0x" << std::hex << importDir.Size << std::dec << std::endl;
+    if (importDir.Size)
+    {
+        while (importDesc->Name)
+        {
+            char* libraryName = (char*)(fullImage.data() + importDesc->Name);
+            HMODULE hModule = LoadLibraryA(libraryName);
+            if (!hModule)
+            {
+                std::cerr << "Failed to load library: " << libraryName << std::endl;
+                return false;
+            } std::cout << "-> Loaded library: " << libraryName << std::endl << std::endl;
 
-    //         IMAGE_THUNK_DATA* originalFirstThunk = (IMAGE_THUNK_DATA*)(localDLL + importDesc->OriginalFirstThunk);
-    //         IMAGE_THUNK_DATA* firstThunk = (IMAGE_THUNK_DATA*)((BYTE*)remoteMem + importDesc->FirstThunk);
+            #ifdef _WIN64
+                IMAGE_THUNK_DATA64* originalFirstThunk = (IMAGE_THUNK_DATA64*)(fullImage.data() + importDesc->OriginalFirstThunk);
+                IMAGE_THUNK_DATA64* firstThunk = (IMAGE_THUNK_DATA64*)(fullImage.data() + importDesc->FirstThunk);
 
-    //         while (originalFirstThunk->u1.AddressOfData)
-    //         {
-    //             if (originalFirstThunk->u1.Ordinal & IMAGE_ORDINAL_FLAG)
-    //             {
-    //                 void* funcAddr = GetProcAddress(hModule, (LPCSTR)(originalFirstThunk->u1.Ordinal & 0xFFFF));
-    //                 WriteProcessMemory(hProcess, &firstThunk->u1.Function, &funcAddr, sizeof(void*), nullptr);
-    //             }
-    //             else
-    //             {
-    //                 IMAGE_IMPORT_BY_NAME* importByName = (IMAGE_IMPORT_BY_NAME*)(localDLL + originalFirstThunk->u1.AddressOfData);
-    //                 void* funcAddr = GetProcAddress(hModule, importByName->Name);
-    //                 WriteProcessMemory(hProcess, &firstThunk->u1.Function, &funcAddr, sizeof(void*), nullptr);
-    //             }
+                while (originalFirstThunk->u1.AddressOfData)
+                {
+                    ULONGLONG* targetAddress = (ULONGLONG*)firstThunk;
+                    ULONGLONG funcAddr = 0;
+                    if (originalFirstThunk->u1.Ordinal & IMAGE_ORDINAL_FLAG64)
+                        funcAddr = (ULONGLONG)GetProcAddress(hModule, (LPCSTR)(originalFirstThunk->u1.Ordinal & 0xFFFF));
+                    else
+                    {
+                        IMAGE_IMPORT_BY_NAME* importByName = (IMAGE_IMPORT_BY_NAME*)(fullImage.data() + originalFirstThunk->u1.AddressOfData);
+                        funcAddr = (ULONGLONG)GetProcAddress(hModule, importByName->Name);
+                    }
 
-    //             originalFirstThunk++;
-    //             firstThunk++;
-    //         }
-    //         importDesc++;
-    //     }
-    // }
+                    *targetAddress = funcAddr;
+                    originalFirstThunk++;
+                    firstThunk++;
+
+                    #if DEBUG_IMPORTS
+                        std::cout << "-> Wrote function address [0x" << std::hex << funcAddr << "] -> [0x" << targetAddress << "]" << std::dec << std::endl;
+                    #endif
+
+                }
+            #else
+                IMAGE_THUNK_DATA32* originalFirstThunk = (IMAGE_THUNK_DATA32*)(fullImage.data() + importDesc->OriginalFirstThunk);
+                IMAGE_THUNK_DATA32* firstThunk = (IMAGE_THUNK_DATA32*)(fullImage.data() + importDesc->FirstThunk);
+
+                while (originalFirstThunk->u1.AddressOfData)
+                {
+                    DWORD* targetAddress = (DWORD*)firstThunk;
+                    DWORD funcAddr = 0;
+                    if (originalFirstThunk->u1.Ordinal & IMAGE_ORDINAL_FLAG32)
+                        funcAddr = (DWORD)GetProcAddress(hModule, (LPCSTR)(originalFirstThunk->u1.Ordinal & 0xFFFF));
+                    else
+                    {
+                        IMAGE_IMPORT_BY_NAME* importByName = (IMAGE_IMPORT_BY_NAME*)(fullImage.data() + originalFirstThunk->u1.AddressOfData);
+                        funcAddr = (DWORD)GetProcAddress(hModule, importByName->Name);
+                    }
+                    *targetAddress = funcAddr;
+                    originalFirstThunk++;
+                    firstThunk++;
+
+                    #if DEBUG_IMPORTS
+                        std::cout << "-> Wrote function address [0x" << std::hex << funcAddr << "] -> [0x" << targetAddress << "]" << std::dec << std::endl;
+                    #endif
+                }
+            #endif
+
+            importDesc++;
+        }
+    }   std::cout << "\t[Imports resolved]" << std::endl;
+    
+//======================================================================================================================================================================
 
     // // Set memory protection for sections
     // for (int i = 0; i < ntHeaders->FileHeader.NumberOfSections; i++)
