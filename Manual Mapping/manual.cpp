@@ -4,7 +4,7 @@
 #include <vector>
 #include <tlhelp32.h>
 
-#define DEBUG_HEADERS 0
+// #define DEBUG_HEADERS 0
 #define DEBUG_SECTIONS 0
 #define DEBUG_RELOC 0
 #define DEBUG_IMPORTS 0
@@ -124,19 +124,19 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     //======================================================================================================================================================================
 
     // Write headers
-    std::cout << "-> Trying to write headers " << std::endl;
+    //std::cout << "-> Trying to write headers " << std::endl;
     memcpy(fullImage.data(), localDLL, ntHeaders->OptionalHeader.SizeOfHeaders);
-    std::cout << "\t[wrote headers]\n" << std::endl;
+    //std::cout << "\t[wrote headers]\n" << std::endl;
 
-    #if DEBUG_HEADERS
-        for(int i=0;i<15;i++)std::cout << "=";std::cout << "HEADER_DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl;
+    // #if DEBUG_HEADERS
+    //     for(int i=0;i<15;i++)std::cout << "=";std::cout << "HEADER_DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl;
         
-        std::cout << "Size of headers: 0x" << std::hex << ntHeaders->OptionalHeader.SizeOfHeaders << " bytes" << std::endl;      
-        std::cout << "First address used by headers: 0x" << std::hex << (uintptr_t)fullImage.data() << std::dec << std::endl;
-        std::cout << "Last address used by headers: 0x" << std::hex << ((uintptr_t)fullImage.data() + ntHeaders->OptionalHeader.SizeOfHeaders) - 1 << std::endl; 
+    //     std::cout << "Size of headers: 0x" << std::hex << ntHeaders->OptionalHeader.SizeOfHeaders << " bytes" << std::endl;      
+    //     std::cout << "First address used by headers: 0x" << std::hex << (uintptr_t)fullImage.data() << std::dec << std::endl;
+    //     std::cout << "Last address used by headers: 0x" << std::hex << ((uintptr_t)fullImage.data() + ntHeaders->OptionalHeader.SizeOfHeaders) - 1 << std::endl; 
 
-        for(int i=0;i<15;i++)std::cout << "=";std::cout << "DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl << std::endl;
-    #endif
+    //     for(int i=0;i<15;i++)std::cout << "=";std::cout << "DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl << std::endl;
+    // #endif
     //======================================================================================================================================================================
 
     // Write sections
