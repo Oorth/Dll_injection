@@ -121,9 +121,9 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     std::cout << " Base of Code                : 0x" << std::hex << ntHeaders->OptionalHeader.BaseOfCode << std::dec << std::endl;
     std::cout << std::endl; for(int i=0;i<50;i++)std::cout << "="; std::cout << "\n\n";
 
-//======================================================================================================================================================================
+    //======================================================================================================================================================================
 
-// Write headers
+    // Write headers
     std::cout << "-> Trying to write headers " << std::endl;
     memcpy(fullImage.data(), localDLL, ntHeaders->OptionalHeader.SizeOfHeaders);
     std::cout << "\t[wrote headers]\n" << std::endl;
@@ -137,7 +137,7 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
 
         for(int i=0;i<15;i++)std::cout << "=";std::cout << "DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl << std::endl;
     #endif
-//======================================================================================================================================================================
+    //======================================================================================================================================================================
 
     // Write sections
 
@@ -167,9 +167,9 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     for(int i=0;i<15;i++)std::cout << "=";std::cout << "SECTION_DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl << std::endl;
     #endif
 
-//======================================================================================================================================================================
+    //======================================================================================================================================================================
 
-// Allocate memory for full DLL image
+    // Allocate memory for full DLL image
     std::cout << "-> Trying to allocate at 0x" << std::hex << ntHeaders->OptionalHeader.ImageBase;
     void* remoteMem = VirtualAllocEx(hProcess, (LPVOID)ntHeaders->OptionalHeader.ImageBase, ntHeaders->OptionalHeader.SizeOfImage, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     if (!remoteMem)
@@ -182,9 +182,9 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
         }
     }   std::cout << "\t[allocated memory at: 0x" << std::hex << remoteMem << "]\n" << std::endl;
 
-//======================================================================================================================================================================
+    //======================================================================================================================================================================
 
-// Resolve relocations if the base address has changed
+    // Resolve relocations if the base address has changed
 
     if ((LPVOID)ntHeaders->OptionalHeader.ImageBase != remoteMem)
     {
@@ -237,9 +237,9 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     }
     else std::cout << "\t[No need to relocate]" << std::endl;
 
-//======================================================================================================================================================================
+    //======================================================================================================================================================================
 
-// Resolve imports
+    // Resolve imports
     
     std::cout << std::endl << "-> Resolving imports" << std::endl << "importDir Size: 0x" << std::hex << importDir.Size << std::dec << std::endl;
     if (importDir.Size)
@@ -308,9 +308,9 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
         }
     }   std::cout << "\t[Imports resolved]" << std::endl;
 
-//======================================================================================================================================================================
+    //======================================================================================================================================================================
 
-// Write full image to target process
+    // Write full image to target process
 
     if (!WriteProcessMemory(hProcess, remoteMem, fullImage.data(), fullImage.size(), nullptr))
     {
@@ -319,7 +319,7 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     }
     std::cout << "-> Full image injection complete" << std::endl;
     
-//======================================================================================================================================================================
+    //======================================================================================================================================================================
 
     //Set memory protection for sections
 
@@ -342,10 +342,10 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
         std::cout << "-> memory permission set for section: " << sectionHeader[i].Name << "\t[" << std::hex << oldProtect << "] -> [" << newProtect << "]" << std::dec << std::endl;
     }
 
-//======================================================================================================================================================================
+    //======================================================================================================================================================================
 
 
-// TlsCallbacks
+    // TlsCallbacks
 
     // if(tlsDir.Size == 0) 
     // {
@@ -400,9 +400,9 @@ bool InjectDLL(DWORD pid, std::vector <unsigned char> *downloaded_dll)
     //     }
     //     std::cout << "\t[TLS callbacks executed]" << std::endl;
     // }
-//======================================================================================================================================================================
 
-    // Call the entry point
+    //======================================================================================================================================================================
+
     // void* entryPoint = (BYTE*)remoteMem + ntHeaders->OptionalHeader.AddressOfEntryPoint;
     // HANDLE hThread = CreateRemoteThread(hProcess, nullptr, 0, (LPTHREAD_START_ROUTINE)entryPoint, remoteMem, 0, nullptr);
     // if (!hThread)
