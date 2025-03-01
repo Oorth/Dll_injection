@@ -197,4 +197,51 @@ void __stdcall ShellCode(MANUAL_MAPPING_DATA* pData)
         }
     }
 
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // Imports
+    if(pOpt->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size)
+    {
+        auto* pImportDescr = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(pBase + pOpt->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+        while(pImportDescr)
+        {
+            char* szMod = reinterpret_cast<char*>(pBase + pImportDescr->Name);
+            
+            HINSTANCE hDll = _LoadLibraryA(szMod);
+            ULONG_PTR* pThunkRef = reinterpret_cast<ULONG_PTR*>(pBase + pImportDescr->OriginalFirstThunk);
+            ULONG_PTR* pFuncRef = reinterpret_cast<ULONG_PTR*>(pBase + pImportDescr->FirstThunk);
+
+            if(!pThunkRef) pThunkRef = pFuncRef;
+
+            for(; *pThunkRef; ++pThunkRef, ++pFuncRef)
+            {
+                if(IMAGE_SNAP_BY_ORDINAL(*pThunkRef)) *pFuncRef = _GetProcAddress(hDll, reinterpret_cast<char*>(*pThunkRef & 0xFFFF));
+                else
+                {
+                    auto* pImport = reinterpret_cast<IMAGE_IMPORT_BY_NAME*>(pBase + (*pThunkRef));
+                    *pFuncRef = _GetProcAddress(hDll, pImport->Name);
+                }
+            }
+            ++pImportDescr;
+        }
+
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // TLS
+    if(pOpt->DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].Size)
+    {
+        auto* pTLS = reinterpret_cast<IMAGE_TLS_DIRECTORY*>(pBase + pOpt->DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].VirtualAddress);
+        auto* pCallback = reinterpret_cast<PIMAGE_TLS_CALLBACK*>(pTLS->AddressOfCallBacks);
+
+        for(; *pCallback && *pCallback; ++pCallback) (*pCallback)(pBase, DLL_PROCESS_ATTACH, nullptr);
+    }
+
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // Entry point
+    _DllMain(pBase, DLL_PROCESS_ATTACH, nullptr);
+
+    pData->hMod = reinterpret_cast<HINSTANCE>(pBase);
 }
