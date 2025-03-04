@@ -1,0 +1,10 @@
+﻿  injection.cpp
+C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.43.34808\include\filesystem(12): warning STL4038: The contents of <filesystem> are available only with C++17 or later.
+C:\malware\dll_injection\ManualmappingVS\ManualmappingVS\injection.cpp(141,15): warning C4018: '<': signed/unsigned mismatch
+  main.cpp
+C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.43.34808\include\filesystem(12): warning STL4038: The contents of <filesystem> are available only with C++17 or later.
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 151 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  ManualmappingVS.vcxproj -> C:\malware\dll_injection\ManualmappingVS\Release\ManualmappingVS.exe

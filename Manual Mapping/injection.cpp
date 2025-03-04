@@ -4,7 +4,7 @@
 #include <fstream>
 
 #define DEBUG_RELOC 0
-#define DEBUG_SECTIONS 0
+#define DEBUG_SECTIONS 1
 
 #define RELOC_FLAG32(RelInfo) ((RelInfo >> 0x0C) == IMAGE_REL_BASED_HIGHLOW)
 #define RELOC_FLAG64(RelInfo) ((RelInfo >> 0x0C) == IMAGE_REL_BASED_DIR64)
@@ -27,14 +27,14 @@ bool ManualMap(HANDLE hProc, const char* szDllFile)
     IMAGE_OPTIONAL_HEADER* pOldOptHeader = nullptr;
     IMAGE_FILE_HEADER* pOldFileHeader = nullptr;
     
-    
+    std::cout << "-> Trying Reading DLL file";
     std::ifstream File(szDllFile, std::ios::binary | std::ios::ate);
     if (File.fail())
     {
         std::cerr << "[!] Failed to open file: " << szDllFile << std::endl;
         File.close();
         return false;
-    }
+    } std::cout << "\t\t[DONE]" << std::endl;
 
     auto FileSize = File.tellg();
     if(FileSize < 0x1000)
@@ -69,6 +69,7 @@ bool ManualMap(HANDLE hProc, const char* szDllFile)
     pOldOptHeader = &pOldNtHeader -> OptionalHeader;
     pOldFileHeader = &pOldNtHeader -> FileHeader;
 
+    std::cout << "[*] Checking architecture";
     #ifdef _WIN64
         if(pOldFileHeader -> Machine != IMAGE_FILE_MACHINE_AMD64)
         {
@@ -84,6 +85,7 @@ bool ManualMap(HANDLE hProc, const char* szDllFile)
             return false;
         }
     #endif
+    std::cout << "\t\t[DONE]" << std::endl;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -95,10 +97,12 @@ bool ManualMap(HANDLE hProc, const char* szDllFile)
         pTargetBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hProc, nullptr, pOldOptHeader -> SizeOfImage, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
         if(!pTargetBase)
         {
-            std::cout << "[!] Memory allocation failed " << GetLastError();
+            std::cerr << "[!] Memory allocation failed (Error: " << GetLastError() << ")" << std::endl;
             delete[] pSrcData;
+            return false;
         }
-    }   std::cout << "\t[allocated memory at: 0x" << std::hex << pTargetBase << "]\n" << std::endl;
+    }
+    if (pTargetBase) std::cout << "\t[allocated memory at: 0x" << std::hex << reinterpret_cast<void*>(pTargetBase) << "]" << std::endl;
     
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -106,6 +110,8 @@ bool ManualMap(HANDLE hProc, const char* szDllFile)
     data.pLoadLibraryA = LoadLibraryA;
     data.pGetProcAddress = reinterpret_cast<f_GetProcAddress>(GetProcAddress);
 
+
+    std::cout << "\n[*] Writing sections to target process";
     auto* pSectionHeader = IMAGE_FIRST_SECTION(pOldNtHeader);
     for(UINT i = 0; i != pOldFileHeader->NumberOfSections; ++i, ++pSectionHeader)
     {
@@ -118,35 +124,86 @@ bool ManualMap(HANDLE hProc, const char* szDllFile)
                 VirtualFreeEx(hProc, pTargetBase, pOldOptHeader->SizeOfImage, MEM_RELEASE);
             }
         }
-    }
+    } std::cout << "\t[DONE]" << std::endl;
 
     #if DEBUG_SECTIONS
-    for(int i=0;i<15;i++)std::cout << "=";std::cout << "SECTION_DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl;
+    std::cout<<"\n"; for(int i=0;i<15;i++)std::cout << "=";std::cout << "SECTION_DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl;
     
-        auto* pSectionHeader = IMAGE_FIRST_SECTION(pOldNtHeader);
-        for (UINT i = 0; i != pOldFileHeader->NumberOfSections; ++i, ++pSectionHeader)
+        auto* pDebugSectionHeader = IMAGE_FIRST_SECTION(pOldNtHeader);
+        for (UINT i = 0; i != pOldFileHeader->NumberOfSections; ++i, ++pDebugSectionHeader)
         {
-            void* sectionDest = pTargetBase + pSectionHeader->VirtualAddress;
-            std::cout << "-> Section Name: " << pSectionHeader->Name;
-            std::cout << " Section Size: 0x" << std::hex << pSectionHeader->SizeOfRawData << " bytes" << std::endl;
-            std::cout << "Section from [0x" << std::hex << (uintptr_t(sectionDest)) << "]  -> [0x" << (uintptr_t(sectionDest) + pSectionHeader->SizeOfRawData - 1) << "]";
+            BYTE* sectionDest = pTargetBase + pSectionHeader->VirtualAddress;
+            std::cout << "-> Section Name: " << pDebugSectionHeader->Name;
+            std::cout << " Section Size: 0x" << std::hex << pDebugSectionHeader->SizeOfRawData << " bytes" << std::endl;
+            std::cout << "Section from [0x" << std::hex << (uintptr_t)sectionDest << "]  -> [0x" << (uintptr_t)(sectionDest + pDebugSectionHeader->SizeOfRawData - 1) << "]";
             
-            std::cout << "\tTrue size [0x" << std::hex << pSectionHeader->SizeOfRawData << "]"; if(i == pOldFileHeader->NumberOfSections - 1) std::cout << std::endl;
+            std::cout << "\tTrue size [0x" << std::hex << pDebugSectionHeader->SizeOfRawData << "]"; if(i == pOldFileHeader->NumberOfSections - 1) std::cout << std::endl;
             if(i < pOldFileHeader->NumberOfSections - 1) 
             {
-                auto nextSection = pSectionHeader + 1;
-                std::cout << "\tPadding [0x" << std::hex << (nextSection->VirtualAddress - (pSectionHeader->VirtualAddress + pSectionHeader->SizeOfRawData)) << "]" << std::endl;
+            auto nextSection = pDebugSectionHeader + 1;
+            std::cout << "\tPadding [0x" << std::hex << (nextSection->VirtualAddress - (pSectionHeader->VirtualAddress + pSectionHeader->SizeOfRawData)) << "]" << std::endl;
             }
         }
 
     for(int i=0;i<15;i++)std::cout << "=";std::cout << "SECTION_DEBUGGING";for(int i=0;i<15;i++)std::cout << "=";std::cout << std::endl << std::endl;
     #endif
 
+    std::cout << "[*] Writing to target process";
+    memcpy(pSrcData, &data, sizeof(data));
+    WriteProcessMemory(hProc, pTargetBase, pSrcData, 0x1000, nullptr);
     delete[] pSrcData;
+    std::cout << "\t\t[DONE]" << std::endl;
     
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    //Write shellcode to the remote process
+    std::cout << "[*] Writing shellcode to target process";
+    void* pShellCode = VirtualAllocEx(hProc, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if(!pShellCode)
+    {
+        std::cerr << "[!] Failed" << GetLastError() << std::endl;
+        VirtualFreeEx(hProc, pTargetBase, 0, MEM_RELEASE);
+        return false;
+    }
 
+    WriteProcessMemory(hProc, pTargetBase, &data, sizeof(data), nullptr);
+    //WriteProcessMemory(hProc, pShellCode, ShellCode, 0x1000, nullptr);
+    std::cout << "\t[DONE]" << std::endl;
+
+system("pause");
+
+    std::cout << "[*] Creating remote thread";
+    HANDLE hThread = CreateRemoteThread(hProc, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(pShellCode), pTargetBase, 0, nullptr);
+    if(!hThread)
+    {
+        std::cerr << "[!] Failed to create remote thread " << GetLastError() << std::endl;
+        VirtualFreeEx(hProc, pShellCode, 0, MEM_RELEASE);
+        VirtualFreeEx(hProc, pTargetBase, 0, MEM_RELEASE);
+        return false;
+    } //std::cout << "\t\t[DONE]" << std::endl;
+    std::cout << "Created thread at 0x" << std::hex << (uintptr_t)pShellCode << " (handle: 0x" << std::hex << hThread << ")" << std::endl;
+    CloseHandle(hThread);
+
+system("pause");
+
+    HINSTANCE hCheck = 0;
+    while(!hCheck)
+    {
+        MANUAL_MAPPING_DATA data_checked{ 0 };
+        SIZE_T bytesRead;
+        if(!ReadProcessMemory(hProc, pTargetBase, &data_checked, sizeof(data_checked), &bytesRead))
+        {
+            std::cerr << "[!] Failed to read process memory" << std::endl;
+            return false;
+        }
+
+        hCheck = data_checked.hMod;
+        Sleep(10);
+    }
+
+    VirtualFreeEx(hProc, pShellCode, 0, MEM_RELEASE);
+    
+    return true;
 }
 
 void __stdcall ShellCode(MANUAL_MAPPING_DATA* pData)
@@ -160,10 +217,12 @@ void __stdcall ShellCode(MANUAL_MAPPING_DATA* pData)
     auto _LoadLibraryA = pData->pLoadLibraryA;
     auto _GetProcAddress = pData->pGetProcAddress;
     auto _DllMain = reinterpret_cast<f_DLL_ENTRY_POINT>(pBase + pOpt->AddressOfEntryPoint);
+    auto _MessageBoxA = pData->pMessageBoxA;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Relocations
+    _MessageBoxA(NULL, "Relocating Image", "Manual Mapping", MB_OK);
     BYTE* LocationDelta = pBase - pOpt->ImageBase;
     if(LocationDelta)
     {
@@ -195,7 +254,7 @@ void __stdcall ShellCode(MANUAL_MAPPING_DATA* pData)
 
             pRelocData = reinterpret_cast<IMAGE_BASE_RELOCATION*>(reinterpret_cast<BYTE*>(pRelocData) + pRelocData->SizeOfBlock);
         }
-    }
+    } std::cout << "\t[Relocation completed]" << std::endl;
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
