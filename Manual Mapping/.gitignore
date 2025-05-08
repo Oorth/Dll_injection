@@ -2,3 +2,4 @@
 *.exe
 DbgMacros.h
 injection.h
+*.dll

