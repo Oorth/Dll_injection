@@ -1,5 +1,9 @@
 //cl /std:c++17 /EHsc .\main.cpp .\injection.cpp /link /OUT:main.exe
+#define DEBUG 1
 #include "injection.h"
+#include <iostream>
+#include <Windows.h>
+
 
 bool ManualMap(HANDLE hproc, const char* dllPath);
 
@@ -30,17 +34,16 @@ DWORD GetProcessID(const wchar_t* processName)
     return pid;
 }
 
-
 int main()
 {
-
+    ok("IN\n");
     PROCESSENTRY32 PE32{0};
     PE32.dwSize = sizeof(PE32);
 
     HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if(hSnap == INVALID_HANDLE_VALUE)
     {
-        std::cerr << "Failed to create snapshot: " << GetLastError() << std::endl;
+        fuk("Failed to create snapshot: ", GetLastError(),"\n");
         system("pause");
         return 1;
     }
@@ -57,32 +60,33 @@ int main()
     //     }
     //     bRet = Process32Next(hSnap, &PE32);
     // }CloseHandle(hSnap);
-    std::cout << "Trying to get a handle to the process...\n"; 
+
+    norm("Trying to get a handle to the process...\n");
     PID = GetProcessID(L"notepad.exe");
     if (PID == 0)
     {
-        std::cerr << "[Target process not found]\n";
+        fuk("[Target process not found]\n");
         return 1;
-    } std::cout << "Process ID: " << PID << "\n";
+    } norm("Process ID: ", CYAN"", PID, "\n");
 
 
-    std::cout << "-> Attempting to open process";
+    norm("-> Attempting to open process");
     HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, PID);
     if (!hProc)
     {
-        std::cerr << "[!] Failed to open process: " << GetLastError() << std::endl;
+        fuk("[!] Failed to open process: ", GetLastError(), "\n");
         return 1;
-    } std::cout << "\t\t[DONE]" << std::endl;
+    } norm(GREEN"\t\t[DONE]\n");
 
     if(!ManualMap(hProc, szDLLFile))
     {
         CloseHandle(hProc);
-        std::cerr << "[!] Failed to inject DLL" << std::endl;
+        fuk("Failed to inject DLL");
         system("pause");
         return 1;
-    }CloseHandle(hProc);
+    } CloseHandle(hProc);
 
-    std::cout << "[+] DLL injected successfully" << std::endl;
+    ok("DLL injected successfully\n");
     return 0;
 
 }

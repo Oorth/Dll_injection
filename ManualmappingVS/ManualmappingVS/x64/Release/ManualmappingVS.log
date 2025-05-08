@@ -1,9 +1,0 @@
-﻿  injection.cpp
-C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.43.34808\include\filesystem(12): warning STL4038: The contents of <filesystem> are available only with C++17 or later.
-C:\malware\dll_injection\ManualmappingVS\ManualmappingVS\injection.cpp(141,15): warning C4018: '<': signed/unsigned mismatch
-  Generating code
-  1 of 151 functions ( 0.7%) were compiled, the rest were copied from previous compilation.
-    0 functions were new in current compilation
-    1 functions had inline decision re-evaluated but remain unchanged
-  Finished generating code
-  ManualmappingVS.vcxproj -> C:\malware\dll_injection\ManualmappingVS\x64\Release\ManualmappingVS.exe
