@@ -11,7 +11,7 @@
 typedef int (*SendDataFunc)(const std::string&, const std::string&);
 typedef std::string (*RecvDataFunc)(const std::string&);
 typedef std::vector<unsigned char> (*RecvDataRawFunc)(const std::string&);
-bool ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll);
+NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll);
 
 ///////////////////////////////////////////////////////////////////////////////////////
 SendDataFunc send_data;

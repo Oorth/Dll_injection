@@ -41,6 +41,7 @@ NTSTATUS SanityCheck()
     //...............................................................................
 
     pSrc_ntHeader = (IMAGE_NT_HEADERS64*)(pSourceBase + peOffset);
+    pSrc_optionalHeader = &pSrc_ntHeader->OptionalHeader;
     
     if(pSrc_ntHeader->Signature != IMAGE_NT_SIGNATURE)
     {
@@ -104,12 +105,11 @@ NTSTATUS SanityCheck()
     } else norm("\nAlignment\t\t\t\t-> ", GREEN"OK");
     
 
-    norm("\n.......................................SanityCheck.......................................");
+    norm("\n.......................................SanityCheck.......................................\n");
     return true;
 }
 
-
-bool ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
+NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
 {
     norm("\n===========================================ManualMap============================================");
 
@@ -120,8 +120,45 @@ bool ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
     
     //==========================================================================================
 
+    /* 
+        Allocated pSrc_optionalHeader->SizeOfImage of memory at preffered base
+        target base ->      pTargetBase
+        space allocated ->  pSrc_optionalHeader->SizeOfImage
+
+        Verify
+            State should be 0x1000
+            type should be 0x20000
+            Protect should be 0x40
+    */
+
+    pTargetBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hproc, reinterpret_cast<void *>(pSrc_optionalHeader->ImageBase), pSrc_optionalHeader->SizeOfImage, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if(!pTargetBase)
+    {
+        warn("Allocation on preffered base failed, allocating randomly\n");
+        
+        pTargetBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hproc, NULL, pSrc_optionalHeader->SizeOfImage, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+        if(!pTargetBase)
+        {
+            fuk("Coudnt allocate memory");
+            return 0;
+        }
+    }norm(std::hex, "Allocated ", CYAN"0x", pSrc_optionalHeader->SizeOfImage, " bytes (", pSrc_optionalHeader->SizeOfImage / 1024, " KB)", RESET" remote Memory at -> ", CYAN"0x", (uintptr_t)pTargetBase);
 
 
+    //verify
+    MEMORY_BASIC_INFORMATION mbi;
+    LPVOID baseAddress = 0;
+
+    if(VirtualQueryEx(hproc, pTargetBase, &mbi, sizeof(mbi)) == sizeof(mbi))
+    {
+        if(mbi.State == 0x1000 && mbi.Type == 0x20000 && mbi.Protect == 0x40) norm(std::hex,"\n[", GREEN"OK", RESET"] ", "State ", CYAN"", mbi.State, RESET" Type ", CYAN"0x", mbi.Type, RESET" Protect ", CYAN"0x", mbi.Protect, "\n");
+        else norm(std::hex, "\n[", RED"ISSUE", RESET"] ", "State ", CYAN"", mbi.State, RESET" Type ", CYAN"0x", mbi.Type, RESET" Protect ", CYAN"0x", mbi.Protect);
+    } else fuk("VirtualQueryEx failed");
+    
+    //==========================================================================================
+
+    
+    
     norm("\n===========================================ManualMap============================================");
     return 1;
 }
