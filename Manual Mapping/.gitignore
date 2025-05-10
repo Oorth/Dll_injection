@@ -1,5 +1,8 @@
 *.obj
 *.exe
+*.dll
+*.lib
+*.exp
 DbgMacros.h
 injection.h
-*.dll
+network_lib.cpp
