@@ -2,10 +2,10 @@
 
 BYTE* pSourceBase = nullptr;
 BYTE* pTargetBase = nullptr;
-IMAGE_DOS_HEADER* pdosHeader = nullptr;
-IMAGE_NT_HEADERS* pntHeader = nullptr;
-IMAGE_OPTIONAL_HEADER* poptionalHeader = nullptr;
-IMAGE_FILE_HEADER* pfileHeader = nullptr;
+IMAGE_DOS_HEADER* pDosHeader = nullptr;
+IMAGE_NT_HEADERS* pNtHeader = nullptr;
+IMAGE_OPTIONAL_HEADER* pOptionalHeader = nullptr;
+IMAGE_FILE_HEADER* pFileHeader = nullptr;
 IMAGE_SECTION_HEADER* pSectionHeader = nullptr;
 
 size_t Dll_Actual_Size = 0;
@@ -17,12 +17,12 @@ NTSTATUS SanityCheck()
 {
     norm("\n.......................................SanityCheck.......................................");
 
-    pdosHeader = (IMAGE_DOS_HEADER*) pSourceBase;
-    if (pdosHeader->e_magic != 0x5A4D)
+    pDosHeader = (IMAGE_DOS_HEADER*) pSourceBase;
+    if (pDosHeader->e_magic != 0x5A4D)
     {
         fuk("Invalid DOSHeader signature");
         return false;
-    } else norm("\nDOSHeader signature\t\t\t-> ", std::hex, GREEN"0x", pdosHeader->e_magic);
+    } else norm("\nDOSHeader signature\t\t\t-> ", std::hex, GREEN"0x", pDosHeader->e_magic);
 
     //...............................................................................
 
@@ -34,7 +34,7 @@ NTSTATUS SanityCheck()
     
     //...............................................................................
 
-    peOffset = pdosHeader->e_lfanew;
+    peOffset = pDosHeader->e_lfanew;
     if (peOffset + sizeof(IMAGE_NT_HEADERS64) > Dll_Actual_Size)
     {
         fuk("e_lfanew points past buffer end");
@@ -43,25 +43,25 @@ NTSTATUS SanityCheck()
 
     //...............................................................................
 
-    pntHeader = (IMAGE_NT_HEADERS64*)(pSourceBase + peOffset);
-    poptionalHeader = &pntHeader->OptionalHeader;
-    pfileHeader = &pntHeader->FileHeader;
+    pNtHeader = (IMAGE_NT_HEADERS64*)(pSourceBase + peOffset);
+    pOptionalHeader = &pNtHeader->OptionalHeader;
+    pFileHeader = &pNtHeader->FileHeader;
     
-    if(pntHeader->Signature != IMAGE_NT_SIGNATURE)
+    if(pNtHeader->Signature != IMAGE_NT_SIGNATURE)
     {
         fuk("Invalid NtHeader Signature");
     } else norm("\nNtHeader sign\t\t\t\t-> ", GREEN"YES");
 
 
-    if(pntHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC && pntHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC)
+    if(pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC && pNtHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC)
     {
         fuk("Not a 64-bit or 32-bit PE");
         return false;
-    } else norm("\nArchitecture \t\t\t\t-> ", GREEN"", (pntHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC) ? "64-bit" : "32-bit");
+    } else norm("\nArchitecture \t\t\t\t-> ", GREEN"", (pNtHeader->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC) ? "64-bit" : "32-bit");
 
     //...............................................................................
 
-    if(pntHeader->OptionalHeader.SizeOfHeaders > Dll_Actual_Size)
+    if(pNtHeader->OptionalHeader.SizeOfHeaders > Dll_Actual_Size)
     {
         fuk("Headers claim bigger than file");
         return false;
@@ -69,8 +69,8 @@ NTSTATUS SanityCheck()
 
     //...............................................................................
 
-    WORD numSecs = pntHeader->FileHeader.NumberOfSections;
-    BYTE* secTable = (BYTE*)pntHeader + sizeof(IMAGE_NT_HEADERS64);
+    WORD numSecs = pNtHeader->FileHeader.NumberOfSections;
+    BYTE* secTable = (BYTE*)pNtHeader + sizeof(IMAGE_NT_HEADERS64);
     if((secTable - pSourceBase) + numSecs * sizeof(IMAGE_SECTION_HEADER) > Dll_Actual_Size)
     {
         fuk("Section table overruns file");
@@ -89,7 +89,7 @@ NTSTATUS SanityCheck()
             return false;
         }
 
-        if(s.VirtualAddress + max(s.Misc.VirtualSize, s.SizeOfRawData) > pntHeader->OptionalHeader.SizeOfImage)
+        if(s.VirtualAddress + max(s.Misc.VirtualSize, s.SizeOfRawData) > pNtHeader->OptionalHeader.SizeOfImage)
         {
             fuk("Section VSize out of image bounds");
             return false;
@@ -100,8 +100,8 @@ NTSTATUS SanityCheck()
 
     //...............................................................................
 
-    DWORD fileAlign = pntHeader->OptionalHeader.FileAlignment;
-    DWORD sectionAlign = pntHeader->OptionalHeader.SectionAlignment;
+    DWORD fileAlign = pNtHeader->OptionalHeader.FileAlignment;
+    DWORD sectionAlign = pNtHeader->OptionalHeader.SectionAlignment;
     if(fileAlign == 0 || sectionAlign == 0 || (fileAlign & (fileAlign - 1)) || (sectionAlign & (sectionAlign - 1)) || sectionAlign < fileAlign)
     {
         fuk("Weird alignment values");
@@ -121,15 +121,15 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
     Dll_Actual_Size = downloaded_dll->size();
     
     SanityCheck();
-    
+
     //==========================================================================================
 
     #pragma region Allocate_mem
 
     /* 
-        Allocated poptionalHeader->SizeOfImage of memory at preffered base
+        Allocated pOptionalHeader->SizeOfImage of memory at preffered base
         target base ->      pTargetBase
-        space allocated ->  poptionalHeader->SizeOfImage
+        space allocated ->  pOptionalHeader->SizeOfImage
 
         Verify
             State should be 0x1000
@@ -137,19 +137,19 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
             Protect should be 0x40
     */
 
-    pTargetBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hproc, reinterpret_cast<void *>(poptionalHeader->ImageBase), poptionalHeader->SizeOfImage, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    pTargetBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hproc, reinterpret_cast<void *>(pOptionalHeader->ImageBase), pOptionalHeader->SizeOfImage, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
     if(!pTargetBase)
     {
         warn("Allocation on preffered base failed, allocating randomly\n");
         
-        pTargetBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hproc, nullptr, poptionalHeader->SizeOfImage, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+        pTargetBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hproc, nullptr, pOptionalHeader->SizeOfImage, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
         if(!pTargetBase)
         {
             fuk("Coudnt allocate memory ", GetLastError());
             delete[] pSourceBase;
             return 0;
         }
-    } norm(std::hex, "Allocated ", CYAN"0x", poptionalHeader->SizeOfImage, " bytes (", poptionalHeader->SizeOfImage / 1024, " KB)", RESET" remote Memory at -> ", CYAN"0x", (uintptr_t)pTargetBase);
+    } norm(std::hex, "\nAllocated ", CYAN"0x", pOptionalHeader->SizeOfImage, " bytes (", pOptionalHeader->SizeOfImage / 1024, " KB)", RESET" remote Memory at -> ", CYAN"0x", (uintptr_t)pTargetBase);
 
 
     //verify
@@ -166,6 +166,51 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
     
     //==========================================================================================
 
+    #pragma region Cpy_Headers
+
+    /* 
+        Cpy the whole header to the target base at pTargetBase
+        size of header is in pOptionalHeader->SizeOfHeaders;
+
+        Verify
+            query the region
+            no header and section overlap
+
+    */
+
+    norm("\n- - - - - - - - - - - - - Copy Headers - - - - - - - - - - - - -");
+    norm("\nCopying Headers in the target..");
+
+    if(!WriteProcessMemory(hproc, pTargetBase, pSourceBase, pOptionalHeader->SizeOfHeaders, nullptr))
+    {
+        fuk("Failed to copy headers");
+        delete[] pSourceBase;
+        return 0;
+    }
+
+    //= = = = = = = = = = = = = = = = = = = = = = = = =CHECK= = = = = = = = = = = = = = = = = = = = = = = = =
+    // MEMORY_BASIC_INFORMATION mbi;
+    if(VirtualQueryEx(hproc, pTargetBase, &mbi, sizeof(mbi)) != sizeof(mbi))
+    {
+        fuk("Can't query remote region");
+        return false;
+    }
+
+    IMAGE_SECTION_HEADER* pFirstSection = IMAGE_FIRST_SECTION(pNtHeader);
+    if(pOptionalHeader->SizeOfHeaders > pFirstSection->PointerToRawData)
+    {
+        fuk("Headers overlap first section!");
+        return false;
+    }
+    //= = = = = = = = = = = = = = = = = = = = = = = = =CHECK= = = = = = = = = = = = = = = = = = = = = = = = =
+
+    norm("\nHeaders Copied to ", std::hex, CYAN"0x", (uintptr_t)pTargetBase, RESET" and ends at ", CYAN"0x", (uintptr_t)(pTargetBase + pOptionalHeader->SizeOfHeaders), RESET" size[", CYAN"0x", (uintptr_t)pOptionalHeader->SizeOfHeaders, RESET"]");
+
+    norm("\n- - - - - - - - - - - - - Copy Headers - - - - - - - - - - - - -\n");
+    #pragma endregion
+
+    //==========================================================================================
+
     #pragma region Cpy_Sections
 
     /* 
@@ -179,18 +224,18 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
     sResources.pLoadLibraryA = LoadLibraryA;
     sResources.pFindExportAddress = FindExportAddress;
 
-    norm("\n= = = = = = = = = = = = =Copying Sections = = = = = = = = = = = = =");
+    norm("\n= = = = = = = = = = = = = Copy Sections = = = = = = = = = = = = =");
     norm("\nCopying Sections in the target..");
     
-    pSectionHeader = IMAGE_FIRST_SECTION(pntHeader);
-    for(UINT i = 0; i != pfileHeader->NumberOfSections; ++i, ++pSectionHeader)
+    // IMAGE_SECTION_HEADER* pFirstSection = IMAGE_FIRST_SECTION(pNtHeader);
+    for(UINT i = 0; i != pFileHeader->NumberOfSections; ++i, ++pFirstSection)
     {
-        if(pSectionHeader->SizeOfRawData)
+        if(pFirstSection->SizeOfRawData)
         {
-            auto pSource = pSourceBase + pSectionHeader->PointerToRawData;
-            auto pTarget = pTargetBase + pSectionHeader->VirtualAddress;
+            auto pSource = pSourceBase + pFirstSection->PointerToRawData;
+            auto pTarget = pTargetBase + pFirstSection->VirtualAddress;
             
-            if(!WriteProcessMemory(hproc, pTarget, pSource, pSectionHeader->SizeOfRawData, nullptr))
+            if(!WriteProcessMemory(hproc, pTarget, pSource, pFirstSection->SizeOfRawData, nullptr))
             {
                 fuk("Coudnt copy the sections in target memory");
                 delete[] pSourceBase;
@@ -200,14 +245,14 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
 
             //= = = = = = = = = = = = = = = = = = = = = = = = =CHECK= = = = = = = = = = = = = = = = = = = = = = = = =
 
-            if(pSectionHeader->SizeOfRawData > 0x7FFFFFFF)
+            if(pFirstSection->SizeOfRawData > 0x7FFFFFFF)
             {
                 fuk("Section size too large - possible overflow");
                 delete[] pSourceBase;
                 return 0;
             }
             
-            uintptr_t sectionEnd = (uintptr_t)pTarget + pSectionHeader->SizeOfRawData;      // Overflow check
+            uintptr_t sectionEnd = (uintptr_t)pTarget + pFirstSection->SizeOfRawData;      // Overflow check
             if(sectionEnd < (uintptr_t)pTarget)
             {  
                 fuk("Section address overflow detected");
@@ -232,10 +277,10 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
 
             //= = = = = = = = = = = = = = = = = = = = = = = = =CHECK= = = = = = = = = = = = = = = = = = = = = = = = =
 
-            norm("\nSection ", GREEN"", pSectionHeader->Name, RESET"\tfrom ", std::hex, CYAN"0x", (uintptr_t)pTarget, RESET"", " to ", CYAN"0x", sectionEnd, RESET" size[", CYAN"0x", (uintptr_t)pSectionHeader->SizeOfRawData, RESET"]");
+            norm("\nSection ", GREEN"", pFirstSection->Name, RESET"\tfrom ", std::hex, CYAN"0x", (uintptr_t)pTarget, RESET"", " to ", CYAN"0x", sectionEnd, RESET" size[", CYAN"0x", (uintptr_t)pFirstSection->SizeOfRawData, RESET"]");
         }
     }
-    norm("\n= = = = = = = = = = = = =Copying Sections = = = = = = = = = = = = =");
+    norm("\n= = = = = = = = = = = = = Copy Sections = = = = = = = = = = = = =");
 
     #pragma endregion
 
@@ -251,7 +296,17 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
 
     norm("\n===========================================ManualMap===========================================");
 
-    fuk("DIDNT COPY THE HEADERS");return 0;
+    fuk("!Base Relocation"); return 0;
+    fuk("!Import Resolution (IAT Patching)"); return 0;
+    fuk("!TLS Callbacks"); return 0;
+    fuk("!Memory Protections Hardening"); return 0;
+    fuk("!Call the Entry Point"); return 0;
+    /*
+        Cleanup & Stealth Tidy-Up
+        Header Zeroing: overwrite the DOS/PE headers at pRemoteBase to hinder scanners.
+        Unhook Imports: if any hooked APIs to drive the loader, unhook them in your shellcode region.
+        Self-Erase Loader Stub: if inject a small bootstrap stub, have it VirtualFreeEx its own memory once the real DLL is running.
+    */
 
     return 1;
 }
