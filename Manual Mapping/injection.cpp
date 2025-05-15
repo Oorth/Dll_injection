@@ -1,5 +1,18 @@
+//cl /EHsc /GS- /Oy .\main.cpp .\injection.cpp /link /OUT:main.exe
+/*
+    /c               # compile only, no linking
+    /GS-             # disable stack‑security cookies
+    /Zl              # omit default CRT startup code
+    /O2              # full optimization (speed + size)
+    /Oy              # omit frame pointers (no stack‑frame prologue/epilogue)
+    /Gy              # enable function‑level COMDATs (slightly smaller code)
+    /MT              # (optional) link the static CRT if need to use a few CRT routines, try avoid CRT entirely 
+*/
 #include "injection.h"
 
+#pragma comment(linker, "/SECTION:.stub,RWE")
+
+///////////////////////////////////////////////////////////////////////////////
 BYTE* pSourceBase = nullptr;
 BYTE* pTargetBase = nullptr;
 IMAGE_DOS_HEADER* pDosHeader = nullptr;
@@ -11,7 +24,11 @@ IMAGE_SECTION_HEADER* pSectionHeader = nullptr;
 size_t Dll_Actual_Size = 0;
 DWORD peOffset = 0;
 
+///////////////////////////////////////////////////////////////////////////////
 void* FindExportAddress(HMODULE hModule, const char* funcName);
+__declspec(noinline) void __stdcall shellcode(RESOURCES sResources);
+__declspec(noinline) void __cdecl ShellcodeEndMarker();
+///////////////////////////////////////////////////////////////////////////////
 
 NTSTATUS SanityCheck()
 {
@@ -196,8 +213,8 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
         return false;
     }
 
-    IMAGE_SECTION_HEADER* pFirstSection = IMAGE_FIRST_SECTION(pNtHeader);
-    if(pOptionalHeader->SizeOfHeaders > pFirstSection->PointerToRawData)
+    IMAGE_SECTION_HEADER* pSection = IMAGE_FIRST_SECTION(pNtHeader);
+    if(pOptionalHeader->SizeOfHeaders > pSection->PointerToRawData)
     {
         fuk("Headers overlap first section!");
         return false;
@@ -220,22 +237,18 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
         verify each by printing the section names and then the start and end addresses of all..
     */
     
-    RESOURCES sResources = {0};
-    sResources.pLoadLibraryA = LoadLibraryA;
-    sResources.pFindExportAddress = FindExportAddress;
-
     norm("\n= = = = = = = = = = = = = Copy Sections = = = = = = = = = = = = =");
     norm("\nCopying Sections in the target..");
     
-    // IMAGE_SECTION_HEADER* pFirstSection = IMAGE_FIRST_SECTION(pNtHeader);
-    for(UINT i = 0; i != pFileHeader->NumberOfSections; ++i, ++pFirstSection)
+    // IMAGE_SECTION_HEADER* pSection = IMAGE_FIRST_SECTION(pNtHeader);
+    for(UINT i = 0; i != pFileHeader->NumberOfSections; ++i, ++pSection)
     {
-        if(pFirstSection->SizeOfRawData)
+        if(pSection->SizeOfRawData)
         {
-            auto pSource = pSourceBase + pFirstSection->PointerToRawData;
-            auto pTarget = pTargetBase + pFirstSection->VirtualAddress;
+            auto pSource = pSourceBase + pSection->PointerToRawData;
+            auto pTarget = pTargetBase + pSection->VirtualAddress;
             
-            if(!WriteProcessMemory(hproc, pTarget, pSource, pFirstSection->SizeOfRawData, nullptr))
+            if(!WriteProcessMemory(hproc, pTarget, pSource, pSection->SizeOfRawData, nullptr))
             {
                 fuk("Coudnt copy the sections in target memory");
                 delete[] pSourceBase;
@@ -245,14 +258,14 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
 
             //= = = = = = = = = = = = = = = = = = = = = = = = =CHECK= = = = = = = = = = = = = = = = = = = = = = = = =
 
-            if(pFirstSection->SizeOfRawData > 0x7FFFFFFF)
+            if(pSection->SizeOfRawData > 0x7FFFFFFF)
             {
                 fuk("Section size too large - possible overflow");
                 delete[] pSourceBase;
                 return 0;
             }
             
-            uintptr_t sectionEnd = (uintptr_t)pTarget + pFirstSection->SizeOfRawData;      // Overflow check
+            uintptr_t sectionEnd = (uintptr_t)pTarget + pSection->SizeOfRawData;      // Overflow check
             if(sectionEnd < (uintptr_t)pTarget)
             {  
                 fuk("Section address overflow detected");
@@ -277,7 +290,7 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
 
             //= = = = = = = = = = = = = = = = = = = = = = = = =CHECK= = = = = = = = = = = = = = = = = = = = = = = = =
 
-            norm("\nSection ", GREEN"", pFirstSection->Name, RESET"\tfrom ", std::hex, CYAN"0x", (uintptr_t)pTarget, RESET"", " to ", CYAN"0x", sectionEnd, RESET" size[", CYAN"0x", (uintptr_t)pFirstSection->SizeOfRawData, RESET"]");
+            norm("\nSection ", GREEN"", pSection->Name, RESET"\tfrom ", std::hex, CYAN"0x", (uintptr_t)pTarget, RESET"", " to ", CYAN"0x", sectionEnd, RESET" size[", CYAN"0x", (uintptr_t)pSection->SizeOfRawData, RESET"]");
         }
     }
     norm("\n= = = = = = = = = = = = = Copy Sections = = = = = = = = = = = = =");
@@ -286,13 +299,52 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
 
     //==========================================================================================
 
+    #pragma region Inject_Shellcode
     /*
-    
-    
+        calculate the size of the shellcode and store it in shellcodeBlockSize
+        inject the shellcode at pShellcodeTargetBase
+        
+        Execute it via a remote thread...
     */
 
+    norm("\n\n=_=_=_=_=_=_=_=_=_=_=_=_=_Cpy Shellcode_=_=_=_=_=_=_=_=_=_=_=_=_=");
+    norm("\nCopying Shellcode in the target..");
+
+    void* vpStartAddressOfShellcode = &shellcode;
+    void* vpEndAddressOfShellcode = &ShellcodeEndMarker;
+
+    size_t shellcodeBlockSize = (uintptr_t)vpEndAddressOfShellcode - (uintptr_t)vpStartAddressOfShellcode;
+
+    
+    BYTE* pShellcodeTargetBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hproc, nullptr, shellcodeBlockSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if(!pShellcodeTargetBase)
+    {
+        fuk("Coudnt allocate memory ", GetLastError());
+        delete[] pSourceBase;
+        return 0;
+    } norm(std::hex, "\n\nAllocated ", CYAN"0x", shellcodeBlockSize, " bytes (", shellcodeBlockSize / 1024.0, " KB)", RESET" remote Memory at -> ", CYAN"0x", (uintptr_t)pShellcodeTargetBase);
 
 
+    //verify
+    if(VirtualQueryEx(hproc, pShellcodeTargetBase, &mbi, sizeof(mbi)) == sizeof(mbi))
+    {
+        if(mbi.State == 0x1000 && mbi.Type == 0x20000 && mbi.Protect == 0x40) norm(std::hex,"\n[", GREEN"OK", RESET"] ", "State ", CYAN"", mbi.State, RESET" Type ", CYAN"0x", mbi.Type, RESET" Protect ", CYAN"0x", mbi.Protect, "\n");
+        else norm(std::hex, "\n[", RED"ISSUE", RESET"] ", "State ", CYAN"", mbi.State, RESET" Type ", CYAN"0x", mbi.Type, RESET" Protect ", CYAN"0x", mbi.Protect);
+    } else fuk("VirtualQueryEx failed");
+
+
+
+    if(!WriteProcessMemory(hproc, pShellcodeTargetBase, vpStartAddressOfShellcode, shellcodeBlockSize, nullptr))
+    {
+        fuk("Failed to copy the shellcode");
+        delete[] pSourceBase;
+        return 0;
+    } norm("\nShellcode Copied to ", std::hex, CYAN"0x", (uintptr_t)pShellcodeTargetBase, RESET" and ends at ", CYAN"0x", (uintptr_t)(pShellcodeTargetBase + shellcodeBlockSize), RESET" size[", CYAN"0x", shellcodeBlockSize, RESET"]");
+
+    norm("\n=_=_=_=_=_=_=_=_=_=_=_=_=_Cpy Shellcode_=_=_=_=_=_=_=_=_=_=_=_=_=");
+    #pragma endregion
+
+    //==========================================================================================
 
     norm("\n===========================================ManualMap===========================================");
 
@@ -362,3 +414,21 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
     fuk("Function not found: ", funcName);
     return nullptr;
 }
+
+#pragma region Shellcode
+#pragma code_seg(push, ".stub")
+
+    __declspec(noinline) void __stdcall shellcode(RESOURCES sResources)
+    {
+        
+        sResources.My_LoadLibraryA = LoadLibraryA;
+        sResources.FindExportAddress = FindExportAddress;
+
+
+        int a = 0x10;
+        __debugbreak();
+    }
+
+    __declspec(noinline) void __cdecl ShellcodeEndMarker(){ }           //MarkerFunction
+#pragma code_seg(pop)
+#pragma endregion
