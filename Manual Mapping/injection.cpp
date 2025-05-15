@@ -26,7 +26,7 @@ DWORD peOffset = 0;
 
 ///////////////////////////////////////////////////////////////////////////////
 void* FindExportAddress(HMODULE hModule, const char* funcName);
-__declspec(noinline) void __stdcall shellcode(RESOURCES sResources);
+__declspec(noinline) void __stdcall shellcode();
 __declspec(noinline) void __cdecl ShellcodeEndMarker();
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -341,6 +341,14 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
         return 0;
     } norm("\nShellcode Copied to ", std::hex, CYAN"0x", (uintptr_t)pShellcodeTargetBase, RESET" and ends at ", CYAN"0x", (uintptr_t)(pShellcodeTargetBase + shellcodeBlockSize), RESET" size[", CYAN"0x", shellcodeBlockSize, RESET"]");
 
+    
+    DWORD ShellcodeThreadId = 0;
+    if(!CreateRemoteThread(hproc, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(pShellcodeTargetBase), nullptr, 0, &ShellcodeThreadId))
+    {
+        fuk("Failed to create a thread shellcode ", GetLastError());
+        return 0;
+    } norm("\nThread id -> ", std::dec, CYAN"", ShellcodeThreadId);
+    
     norm("\n=_=_=_=_=_=_=_=_=_=_=_=_=_Cpy Shellcode_=_=_=_=_=_=_=_=_=_=_=_=_=");
     #pragma endregion
 
@@ -418,11 +426,11 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 #pragma region Shellcode
 #pragma code_seg(push, ".stub")
 
-    __declspec(noinline) void __stdcall shellcode(RESOURCES sResources)
+    __declspec(noinline) void __stdcall shellcode()
     {
         
-        sResources.My_LoadLibraryA = LoadLibraryA;
-        sResources.FindExportAddress = FindExportAddress;
+        // sResources.My_LoadLibraryA = LoadLibraryA;
+        // sResources.FindExportAddress = FindExportAddress;
 
 
         int a = 0x10;
