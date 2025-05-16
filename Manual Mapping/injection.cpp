@@ -9,6 +9,7 @@
     /MT              # (optional) link the static CRT if need to use a few CRT routines, try avoid CRT entirely 
 */
 #include "injection.h"
+#include <winternl.h>
 
 #pragma comment(linker, "/SECTION:.stub,RWE")
 
@@ -52,7 +53,7 @@ NTSTATUS SanityCheck()
     //...............................................................................
 
     peOffset = pDosHeader->e_lfanew;
-    if (peOffset + sizeof(IMAGE_NT_HEADERS64) > Dll_Actual_Size)
+    if (peOffset + sizeof(IMAGE_NT_HEADERS) > Dll_Actual_Size)
     {
         fuk("e_lfanew points past buffer end");
         return false;   
@@ -60,9 +61,9 @@ NTSTATUS SanityCheck()
 
     //...............................................................................
 
-    pNtHeader = (IMAGE_NT_HEADERS64*)(pSourceBase + peOffset);
+    pNtHeader = (IMAGE_NT_HEADERS*)(pSourceBase + peOffset);
     pOptionalHeader = &pNtHeader->OptionalHeader;
-    pFileHeader = &pNtHeader->FileHeader;
+    pFileHeader = (IMAGE_FILE_HEADER*)(&pNtHeader->FileHeader);
     
     if(pNtHeader->Signature != IMAGE_NT_SIGNATURE)
     {
@@ -428,15 +429,100 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 
     __declspec(noinline) void __stdcall shellcode()
     {
+
+        struct _LIBS
+        {
+            HMODULE hHookedNtdll;
+            HMODULE hUnhookedNtdll;
+            HMODULE hKERNEL32;
+            HMODULE hKERNELBASE;
+            HMODULE hUsr32;
+        }sLibs;
+
+        typedef struct _MY_PEB_LDR_DATA
+        {
+            ULONG Length;
+            BOOLEAN Initialized;
+            PVOID  SsHandle;
+            LIST_ENTRY InLoadOrderModuleList;
+            LIST_ENTRY InMemoryOrderModuleList;
+            LIST_ENTRY InInitializationOrderModuleList;
+        } MY_PEB_LDR_DATA, *MY_PPEB_LDR_DATA;
+
+        typedef struct _LDR_DATA_TABLE_ENTRY
+        {
+            LIST_ENTRY InLoadOrderLinks;
+            LIST_ENTRY InMemoryOrderLinks;
+            LIST_ENTRY InInitializationOrderLinks;
+            PVOID DllBase;
+            UNICODE_STRING FullDllName;
+            UNICODE_STRING BaseDllName;
+        } LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;
+
+        #ifdef _M_IX86
+            PEB* pPEB = (PEB*) __readgsqword(0x30);
+        #else
+            PEB* pPEB = (PEB*) __readgsqword(0x60);   
+        #endif
         
-        // sResources.My_LoadLibraryA = LoadLibraryA;
-        // sResources.FindExportAddress = FindExportAddress;
+        MY_PEB_LDR_DATA* pLdr = (MY_PEB_LDR_DATA*)pPEB->Ldr;
+        auto head = &pLdr->InLoadOrderModuleList;
+        auto current = head->Flink;    // first entry is the EXE itself
+        
+        //walk load‑order
+        while(current != head)
+        {
+            auto entry = CONTAINING_RECORD(current, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
 
+            if(entry->BaseDllName.Buffer)
+            {
+                // int len = entry->BaseDllName.Length / sizeof(WCHAR);
+                // std::wstring name(entry->BaseDllName.Buffer, len);
+                // // wprintf(L"\nModule: %.*ls -> " CYAN"0x%p" RESET"", len, entry->BaseDllName.Buffer, entry->DllBase);
 
-        int a = 0x10;
+                // size_t pos = name.find_last_of(L"\\/");
+                // std::wstring fileName = (pos == std::wstring::npos) ? name : name.substr(pos + 1);
+
+                // // wprintf(L"\n[DEBUG] Scanned Module: %ls", fileName.c_str());
+
+                // if(_wcsicmp(fileName.c_str(), L"kernel32.dll") == 0) sLibs.hKERNEL32 = (HMODULE)entry->DllBase;
+                // else if(_wcsicmp(fileName.c_str(), L"kernelbase.dll") == 0) sLibs.hKERNELBASE = (HMODULE)entry->DllBase;
+                // else if(_wcsicmp(fileName.c_str(), L"ntdll.dll") == 0) sLibs.hHookedNtdll = (HMODULE)entry->DllBase;
+                // else if(_wcsicmp(fileName.c_str(), L"user32.dll") == 0) sLibs.hUsr32 = (HMODULE)entry->DllBase;
+            }
+            current = current->Flink;
+        }
+
         __debugbreak();
     }
 
-    __declspec(noinline) void __cdecl ShellcodeEndMarker(){ }           //MarkerFunction
+    __declspec(noinline) bool __fastcall isSame(const WCHAR* a, const WCHAR* b, SIZE_T len)
+    {
+        for (SIZE_T i = 0; i < len; i++)
+        {
+            WCHAR ca = a[i], cb = b[i];
+            // tolower for ASCII A–Z
+            if (ca >= L'A' && ca <= L'Z') ca += 32;
+            if (cb >= L'A' && cb <= L'Z') cb += 32;
+            if (ca != cb) return false;
+        }
+        return true;
+    }
+
+    __declspec(noinline) void __fastcall HelperSplitFilename(const WCHAR* full, SIZE_T fullLen, const WCHAR** outName, SIZE_T* outLen)
+    {
+        SIZE_T i = fullLen;
+        while (i > 0)
+        {
+            WCHAR c = full[i - 1];
+            if (c == L'\\' || c == L'/') break;
+            --i;
+        }
+        *outName = full + i;
+        *outLen  = fullLen - i;
+    }
+
+    __declspec(noinline) void __cdecl ShellcodeEndMarker(){ }           //MarkerFunction, starts with 'Z' to put it last in the stub
+
 #pragma code_seg(pop)
 #pragma endregion
