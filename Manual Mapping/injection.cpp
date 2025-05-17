@@ -27,6 +27,7 @@ DWORD peOffset = 0;
 
 ///////////////////////////////////////////////////////////////////////////////
 void* FindExportAddress(HMODULE hModule, const char* funcName);
+extern "C" __declspec(noinline) void __stdcall shellcode();
 ///////////////////////////////////////////////////////////////////////////////
 
 NTSTATUS SanityCheck()
@@ -309,6 +310,7 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
     norm("\n\n=_=_=_=_=_=_=_=_=_=_=_=_=_Cpy Shellcode_=_=_=_=_=_=_=_=_=_=_=_=_=");
     norm("\nCopying Shellcode in the target..");
 
+    
     BYTE* exeBase = (BYTE*)GetModuleHandle(NULL);
     auto dos  = (IMAGE_DOS_HEADER*)exeBase;
     auto nt   = (IMAGE_NT_HEADERS*)(exeBase + dos->e_lfanew);
@@ -353,7 +355,7 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
         else norm(std::hex, "\n[", RED"ISSUE", RESET"] ", "State ", CYAN"", mbi.State, RESET" Type ", CYAN"0x", mbi.Type, RESET" Protect ", CYAN"0x", mbi.Protect);
     } else fuk("VirtualQueryEx failed");
 
-
+    //-----------------
 
     if(!WriteProcessMemory(hproc, pShellcodeTargetBase, vpStartAddressOfShellcode, shellcodeBlockSize, nullptr))
     {
@@ -363,21 +365,22 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
     } norm("\nShellcode Copied to ", std::hex, CYAN"0x", (uintptr_t)pShellcodeTargetBase, RESET" and ends at ", CYAN"0x", (uintptr_t)(pShellcodeTargetBase + shellcodeBlockSize), RESET" size[", CYAN"0x", shellcodeBlockSize, RESET"]");
 
     
+    //-----------------
+
+    uintptr_t shellcodeFunctionAddressInMyProcess = (uintptr_t)&shellcode;
+    uintptr_t shellcodeRVA = shellcodeFunctionAddressInMyProcess - (uintptr_t)exeBase;
+
+    DWORD offsetOfShellcodeInStub = shellcodeRVA - stubSection->VirtualAddress;
+    LPVOID pActualShellcodeEntryInTarget = (PBYTE)pShellcodeTargetBase + offsetOfShellcodeInStub;
+
     DWORD ShellcodeThreadId = 0;
-    if(!CreateRemoteThread(hproc, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(pShellcodeTargetBase), nullptr, 0, &ShellcodeThreadId))
+    if(!CreateRemoteThread(hproc, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(pActualShellcodeEntryInTarget), nullptr, 0, &ShellcodeThreadId))
     {
         fuk("Failed to create a thread shellcode ", GetLastError());
         return 0;
     } norm("\nThread id -> ", std::dec, CYAN"", ShellcodeThreadId);
 
-    // size_t OffsetToEntry = ((uintptr_t)&shellcode - (uintptr_t)exeBase) - stubSection->VirtualAddress;
-    // DWORD ShellcodeThreadId = 0;
-    // if(!CreateRemoteThread(hproc, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(pShellcodeTargetBase + OffsetToEntry), nullptr, 0, &ShellcodeThreadId))
-    // {
-    //     fuk("Failed to create a thread shellcode ", GetLastError());
-    //     return 0;
-    // } norm("\nThread id -> ", std::dec, CYAN"", ShellcodeThreadId);
-    
+
     norm("\n=_=_=_=_=_=_=_=_=_=_=_=_=_Cpy Shellcode_=_=_=_=_=_=_=_=_=_=_=_=_=");
     #pragma endregion
 
