@@ -26,7 +26,7 @@ size_t Dll_Actual_Size = 0;
 DWORD peOffset = 0;
 
 ///////////////////////////////////////////////////////////////////////////////
-void* FindExportAddress(HMODULE hModule, const char* funcName);
+static void* FindExportAddress(HMODULE hModule, const char* funcName);
 extern "C" __declspec(noinline) void __stdcall shellcode();
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -455,10 +455,20 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
     return nullptr;
 }
 
+
 #pragma region Shellcode
 #pragma code_seg(push, ".stub")
 
-    extern "C" __declspec(noinline) void __fastcall HelperSplitFilename(const WCHAR* full, SIZE_T fullLen, const WCHAR** outName, SIZE_T* outLen)
+    typedef int (WINAPI *pfnMessageBoxA)(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType);
+
+    __declspec(allocate(".stub")) static const WCHAR kUsr32[] = L"user32.dll";
+    __declspec(allocate(".stub")) static const CHAR TargetFunction[] = "MessageBoxA";
+    __declspec(allocate(".stub")) static const CHAR INJECTED[] = "INJECTED";
+    __declspec(allocate(".stub")) static const CHAR Hello_from_injected_shellcode[] = "Hello from injected shellcode!";
+    __declspec(allocate(".stub")) pfnMessageBoxA my_MessageBoxA = nullptr;
+
+
+    extern "C" __declspec(noinline) void __stdcall HelperSplitFilename(const WCHAR* full, SIZE_T fullLen, const WCHAR** outName, SIZE_T* outLen)
     {
         SIZE_T i = fullLen;
         while (i > 0)
@@ -471,7 +481,20 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         *outLen  = fullLen - i;
     }
 
-    extern "C" __declspec(noinline) bool __fastcall isSame(const WCHAR* a, const WCHAR* b, SIZE_T len)
+    extern "C" __declspec(noinline) bool __stdcall isSame(const char* a, const char* b)
+    {
+        while (*a && *b)
+        {
+            char ca = *a, cb = *b;
+            if (ca >= 'A' && ca <= 'Z') ca += ('a' - 'A');
+            if (cb >= 'A' && cb <= 'Z') cb += ('a' - 'A');
+            if (ca != cb) return false;
+            ++a; ++b;
+        }
+        return (*a == '\0' && *b == '\0');
+    }
+
+    extern "C" __declspec(noinline) bool __stdcall isSameW(const WCHAR* a, const WCHAR* b, SIZE_T len)
     {
         for (SIZE_T i = 0; i < len; i++)
         {
@@ -482,6 +505,46 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
             if (ca != cb) return false;
         }
         return true;
+    }
+
+    extern "C" __declspec(noinline) static void* __stdcall ShellcodeFindExportAddress(HMODULE hModule, const char* funcName)
+    {
+        if(!hModule || !funcName) return nullptr;
+
+        BYTE* base = (BYTE*)hModule;
+        IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)base;
+        DWORD peOffset = dos->e_lfanew;
+        DWORD peSig = *(DWORD*)(base + peOffset);
+        
+        base = (BYTE*)hModule;
+        dos = (IMAGE_DOS_HEADER*)base;
+        if(dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
+
+        IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)(base + dos->e_lfanew);
+        if(nt->Signature != IMAGE_NT_SIGNATURE) return nullptr;
+
+        auto& dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+        if(dir.VirtualAddress == 0) return nullptr;
+
+        IMAGE_EXPORT_DIRECTORY* exp = (IMAGE_EXPORT_DIRECTORY*)(base + dir.VirtualAddress);
+        DWORD* nameRVAs = (DWORD*)(base + exp->AddressOfNames);
+        WORD* ordinals = (WORD*)(base + exp->AddressOfNameOrdinals);
+        DWORD* functions = (DWORD*)(base + exp->AddressOfFunctions);
+
+        for(DWORD i = 0; i < exp->NumberOfNames; ++i)
+        {
+            char* name = (char*)(base + nameRVAs[i]);
+            if(isSame(name, funcName))
+            {
+                DWORD funcRVA = functions[ordinals[i]];
+                BYTE* addr = base + funcRVA;
+
+                // Forwarded export check
+                if(funcRVA >= dir.VirtualAddress && funcRVA < dir.VirtualAddress + dir.Size) return nullptr;
+                return (void*)addr;
+            }
+        }
+        return nullptr;
     }
 
     extern "C" __declspec(noinline) void __stdcall shellcode()
@@ -532,24 +595,23 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 
             if(entry->BaseDllName.Buffer)
             {
-                // int len = entry->BaseDllName.Length / sizeof(WCHAR);
-                // std::wstring name(entry->BaseDllName.Buffer, len);
-                // // wprintf(L"\nModule: %.*ls -> " CYAN"0x%p" RESET"", len, entry->BaseDllName.Buffer, entry->DllBase);
+                const WCHAR* namePtr;
+                SIZE_T       nameLen;
 
-                // size_t pos = name.find_last_of(L"\\/");
-                // std::wstring fileName = (pos == std::wstring::npos) ? name : name.substr(pos + 1);
+                HelperSplitFilename(entry->BaseDllName.Buffer, entry->BaseDllName.Length / sizeof(WCHAR), &namePtr, &nameLen);
 
-                // // wprintf(L"\n[DEBUG] Scanned Module: %ls", fileName.c_str());
-
-                // if(_wcsicmp(fileName.c_str(), L"kernel32.dll") == 0) sLibs.hKERNEL32 = (HMODULE)entry->DllBase;
-                // else if(_wcsicmp(fileName.c_str(), L"kernelbase.dll") == 0) sLibs.hKERNELBASE = (HMODULE)entry->DllBase;
-                // else if(_wcsicmp(fileName.c_str(), L"ntdll.dll") == 0) sLibs.hHookedNtdll = (HMODULE)entry->DllBase;
-                // else if(_wcsicmp(fileName.c_str(), L"user32.dll") == 0) sLibs.hUsr32 = (HMODULE)entry->DllBase;
+                SIZE_T k32len = sizeof(kUsr32)/sizeof(WCHAR) - 1;
+                if(nameLen == k32len && isSameW(namePtr, kUsr32, k32len)) sLibs.hUsr32 = (HMODULE)entry->DllBase;
             }
             current = current->Flink;
         }
+        if(sLibs.hUsr32 == nullptr) __debugbreak();
+        
+        my_MessageBoxA = (pMessageBoxA)ShellcodeFindExportAddress(sLibs.hUsr32, TargetFunction);
+        if(my_MessageBoxA == nullptr) __debugbreak();
 
-        __debugbreak();
+        my_MessageBoxA(NULL, Hello_from_injected_shellcode, INJECTED, MB_OK | MB_TOPMOST);
+        // __debugbreak();
     }
 
 #pragma code_seg(pop)

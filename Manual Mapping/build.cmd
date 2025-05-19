@@ -6,7 +6,7 @@
 
 @echo off
 cls
-del main.pdb main.map main.ilk injection.obj main.obj main.exe injection.asm main.lib main.exp vc140.pdb 2>nul
+del main.pdb main.map main.ilk injection.obj main.obj injection.asm main.lib main.exp main.exe vc140.pdb 2>nul
 cls
 
 @REM /wait
