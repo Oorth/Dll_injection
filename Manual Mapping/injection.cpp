@@ -459,13 +459,16 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 #pragma region Shellcode
 #pragma code_seg(push, ".stub")
 
-    typedef int (WINAPI *pfnMessageBoxA)(HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType);
+    typedef int(WINAPI* pfnMessageBoxW)(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
+    typedef void(WINAPI* pfnOutputDebugStringW)(LPCWSTR lpOutputString);
 
     __declspec(allocate(".stub")) static const WCHAR kUsr32[] = L"user32.dll";
-    __declspec(allocate(".stub")) static const CHAR TargetFunction[] = "MessageBoxA";
-    __declspec(allocate(".stub")) static const CHAR INJECTED[] = "INJECTED";
-    __declspec(allocate(".stub")) static const CHAR Hello_from_injected_shellcode[] = "Hello from injected shellcode!";
-    __declspec(allocate(".stub")) pfnMessageBoxA my_MessageBoxA = nullptr;
+    __declspec(allocate(".stub")) static const WCHAR hKernelbase[] = L"kernelbase.dll";
+    __declspec(allocate(".stub")) static const CHAR MessageBoxWFunction[] = "MessageBoxW";
+    __declspec(allocate(".stub")) static const CHAR OutputDebugStringWFunction[] = "OutputDebugStringW";
+
+    __declspec(allocate(".stub")) pfnMessageBoxW my_MessageBoxW = nullptr;
+    __declspec(allocate(".stub")) pfnOutputDebugStringW my_OutputDebugStringW = nullptr;
 
 
     extern "C" __declspec(noinline) void __stdcall HelperSplitFilename(const WCHAR* full, SIZE_T fullLen, const WCHAR** outName, SIZE_T* outLen)
@@ -596,21 +599,30 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
             if(entry->BaseDllName.Buffer)
             {
                 const WCHAR* namePtr;
-                SIZE_T       nameLen;
+                SIZE_T nameLen;
 
                 HelperSplitFilename(entry->BaseDllName.Buffer, entry->BaseDllName.Length / sizeof(WCHAR), &namePtr, &nameLen);
 
                 SIZE_T k32len = sizeof(kUsr32)/sizeof(WCHAR) - 1;
                 if(nameLen == k32len && isSameW(namePtr, kUsr32, k32len)) sLibs.hUsr32 = (HMODULE)entry->DllBase;
+
+                k32len = sizeof(hKernelbase)/sizeof(WCHAR) - 1;
+                if(nameLen == k32len && isSameW(namePtr, hKernelbase, k32len)) sLibs.hKERNELBASE = (HMODULE)entry->DllBase;
             }
             current = current->Flink;
         }
-        if(sLibs.hUsr32 == nullptr) __debugbreak();
+        if(sLibs.hUsr32 == nullptr || sLibs.hKERNELBASE == nullptr) __debugbreak();
         
-        my_MessageBoxA = (pMessageBoxA)ShellcodeFindExportAddress(sLibs.hUsr32, TargetFunction);
-        if(my_MessageBoxA == nullptr) __debugbreak();
+        my_MessageBoxW = (pfnMessageBoxW)ShellcodeFindExportAddress(sLibs.hUsr32, MessageBoxWFunction);
+        if(my_MessageBoxW == nullptr) __debugbreak();
 
-        my_MessageBoxA(NULL, Hello_from_injected_shellcode, INJECTED, MB_OK | MB_TOPMOST);
+        my_OutputDebugStringW = (pfnOutputDebugStringW)ShellcodeFindExportAddress(sLibs.hKERNELBASE, OutputDebugStringWFunction);
+        if(my_OutputDebugStringW == nullptr) __debugbreak();
+            
+        __declspec(allocate(".stub")) static const WCHAR INJECTED[] = L"INJECTED";
+        __declspec(allocate(".stub")) static const WCHAR Hello_from_injected_shellcode[] = L"Hello from injected shellcode!";
+        // my_MessageBoxW(NULL, Hello_from_injected_shellcode, INJECTED, MB_OK | MB_TOPMOST);
+        my_OutputDebugStringW(Hello_from_injected_shellcode);
         // __debugbreak();
     }
 
