@@ -25,9 +25,15 @@ IMAGE_SECTION_HEADER* pSectionHeader = nullptr;
 size_t Dll_Actual_Size = 0;
 DWORD peOffset = 0;
 
+struct _RESOURCES
+{
+    BYTE* Injected_dll_base;
+    BYTE* Injected_Shellcode_base;
+}sResources_for_shellcode;
+
 ///////////////////////////////////////////////////////////////////////////////
-static void* FindExportAddress(HMODULE hModule, const char* funcName);
-extern "C" __declspec(noinline) void __stdcall shellcode();
+static void* FindExportAddress(HMODULE, const char*);
+extern "C" __declspec(noinline) void __stdcall shellcode(LPVOID);
 ///////////////////////////////////////////////////////////////////////////////
 
 NTSTATUS SanityCheck()
@@ -339,21 +345,42 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
         return 0;
     } norm("\nStart location of ", CYAN"", stubSection->Name, RESET" is", CYAN" 0x", (uintptr_t)vpStartAddressOfShellcode, RESET" size[", CYAN"0x", shellcodeBlockSize, RESET"]");
     
-    BYTE* pShellcodeTargetBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hproc, nullptr, shellcodeBlockSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
-    if(!pShellcodeTargetBase)
+    // BYTE* pShellcodeTargetBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hproc, nullptr, shellcodeBlockSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    // if(!pShellcodeTargetBase)
+    // {
+    //     fuk("Coudnt allocate memory ", GetLastError());
+    //     delete[] pSourceBase;
+    //     return 0;
+    // } norm(std::hex, "\n\nAllocated ", CYAN"0x", shellcodeBlockSize, " bytes (", shellcodeBlockSize / 1024.0, " KB)", RESET" remote Memory at -> ", CYAN"0x", (uintptr_t)pShellcodeTargetBase);
+
+    BYTE* pShellcodeResourceBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hproc, nullptr, shellcodeBlockSize + sizeof(_RESOURCES), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if(!pShellcodeResourceBase)
     {
         fuk("Coudnt allocate memory ", GetLastError());
         delete[] pSourceBase;
         return 0;
-    } norm(std::hex, "\n\nAllocated ", CYAN"0x", shellcodeBlockSize, " bytes (", shellcodeBlockSize / 1024.0, " KB)", RESET" remote Memory at -> ", CYAN"0x", (uintptr_t)pShellcodeTargetBase);
-
+    } norm(std::hex, "\n\nAllocated ", CYAN"0x", shellcodeBlockSize, " bytes (", shellcodeBlockSize / 1024.0, " KB)", RESET" remote Memory at -> ", CYAN"0x", (uintptr_t)pShellcodeResourceBase);
 
     //verify
-    if(VirtualQueryEx(hproc, pShellcodeTargetBase, &mbi, sizeof(mbi)) == sizeof(mbi))
+    if(VirtualQueryEx(hproc, pShellcodeResourceBase, &mbi, sizeof(mbi)) == sizeof(mbi))
     {
         if(mbi.State == 0x1000 && mbi.Type == 0x20000 && mbi.Protect == 0x40) norm(std::hex,"\n[", GREEN"OK", RESET"] ", "State ", CYAN"", mbi.State, RESET" Type ", CYAN"0x", mbi.Type, RESET" Protect ", CYAN"0x", mbi.Protect, "\n");
         else norm(std::hex, "\n[", RED"ISSUE", RESET"] ", "State ", CYAN"", mbi.State, RESET" Type ", CYAN"0x", mbi.Type, RESET" Protect ", CYAN"0x", mbi.Protect);
     } else fuk("VirtualQueryEx failed");
+
+    //-------------------------------
+        BYTE* pShellcodeTargetBase = pShellcodeResourceBase + sizeof(sResources_for_shellcode);
+        sResources_for_shellcode.Injected_dll_base = pTargetBase;
+        sResources_for_shellcode.Injected_Shellcode_base = pShellcodeTargetBase;
+    //--------------------------------------------------fill resources data before this------------------
+
+    if(!WriteProcessMemory(hproc, pShellcodeResourceBase, &sResources_for_shellcode, sizeof(sResources_for_shellcode), nullptr))
+    {
+        fuk("Failed to copy the shellcode ", GetLastError());
+        delete[] pSourceBase;
+        return 0;
+    } norm("\nShellcode resources Copied to ", std::hex, CYAN"0x", (uintptr_t)pShellcodeResourceBase, RESET" and ends at ", CYAN"0x", (uintptr_t)(pShellcodeResourceBase + sizeof(sResources_for_shellcode)), RESET" size[", CYAN"0x", sizeof(sResources_for_shellcode), RESET"]");
+
 
     //-----------------
 
@@ -374,7 +401,7 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
     LPVOID pActualShellcodeEntryInTarget = (PBYTE)pShellcodeTargetBase + offsetOfShellcodeInStub;
 
     DWORD ShellcodeThreadId = 0;
-    if(!CreateRemoteThread(hproc, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(pActualShellcodeEntryInTarget), nullptr, 0, &ShellcodeThreadId))
+    if(!CreateRemoteThread(hproc, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(pActualShellcodeEntryInTarget), pShellcodeResourceBase, 0, &ShellcodeThreadId))
     {
         fuk("Failed to create a thread shellcode ", GetLastError());
         return 0;
@@ -550,7 +577,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         return nullptr;
     }
 
-    extern "C" __declspec(noinline) void __stdcall shellcode()
+    extern "C" __declspec(noinline) void __stdcall shellcode(LPVOID lpParameter)
     {
         struct _LIBS
         {
@@ -580,6 +607,8 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
             UNICODE_STRING FullDllName;
             UNICODE_STRING BaseDllName;
         } LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;
+
+        _RESOURCES* pResources = (_RESOURCES*)lpParameter;
 
         #ifdef _M_IX86
             PEB* pPEB = (PEB*) __readgsqword(0x30);
@@ -613,16 +642,24 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         }
         if(sLibs.hUsr32 == nullptr || sLibs.hKERNELBASE == nullptr) __debugbreak();
         
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
         my_MessageBoxW = (pfnMessageBoxW)ShellcodeFindExportAddress(sLibs.hUsr32, MessageBoxWFunction);
         if(my_MessageBoxW == nullptr) __debugbreak();
 
         my_OutputDebugStringW = (pfnOutputDebugStringW)ShellcodeFindExportAddress(sLibs.hKERNELBASE, OutputDebugStringWFunction);
         if(my_OutputDebugStringW == nullptr) __debugbreak();
             
-        __declspec(allocate(".stub")) static const WCHAR INJECTED[] = L"INJECTED";
-        __declspec(allocate(".stub")) static const WCHAR Hello_from_injected_shellcode[] = L"Hello from injected shellcode!";
-        // my_MessageBoxW(NULL, Hello_from_injected_shellcode, INJECTED, MB_OK | MB_TOPMOST);
-        my_OutputDebugStringW(Hello_from_injected_shellcode);
+        ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        __declspec(allocate(".stub")) static const WCHAR INJECTED[] = L"INJECTED"; __declspec(allocate(".stub")) static const WCHAR s2[] = L"Hello from injected shellcode!";
+        // my_MessageBoxW(NULL, s2, INJECTED, MB_OK | MB_TOPMOST);
+        my_OutputDebugStringW(s2);
+        
+        __declspec(allocate(".stub")) static const WCHAR s3[] = L"Shellcode is injected at -> ";
+        my_OutputDebugStringW(s3);
+        
+
         // __debugbreak();
     }
 
