@@ -489,6 +489,25 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
     #define S_OK ((HRESULT)0L)                                                  // Common HRESULT for success
     #define STRSAFE_E_INSUFFICIENT_BUFFER ((HRESULT)0x8007007AL)                // From strsafe.h
 
+    #define PASTE_INTERNAL(a, b) a##b
+    #define PASTE(a, b) PASTE_INTERNAL(a, b)
+    #define LOG_W(fmt_literal, ...) \
+        do \
+        { \
+            __declspec(allocate(".stub")) static const WCHAR PASTE(_fmt_str_, __LINE__)[] = fmt_literal; \
+            \
+            if (my_OutputDebugStringW) \
+            { \
+                int written = ShellcodeSprintfW(g_shellcodeLogBuffer, sizeof(g_shellcodeLogBuffer)/sizeof(WCHAR), PASTE(_fmt_str_, __LINE__), ##__VA_ARGS__); \
+                if (written >= 0) \
+                { \
+                    my_OutputDebugStringW(g_shellcodeLogBuffer); \
+                } else my_OutputDebugStringW(L"LOG_W formatting error or buffer too small."); \
+            } \
+        } while (0)
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
     typedef int(WINAPI* pfnMessageBoxW)(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
     typedef void(WINAPI* pfnOutputDebugStringW)(LPCWSTR lpOutputString);
     typedef HRESULT(WINAPI* pfnStringCchPrintfW)(LPWSTR pszDest, size_t cchDest, LPCWSTR pszFormat, ...);
@@ -860,15 +879,10 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 
         __declspec(allocate(".stub")) static const WCHAR s2[] = L"Hello from injected shellcode!";
         ShellcodeSprintfW(g_shellcodeLogBuffer, sizeof(g_shellcodeLogBuffer)/sizeof(WCHAR), s2);
-        my_OutputDebugStringW(g_shellcodeLogBuffer);        
-
-        __declspec(allocate(".stub")) static const WCHAR ab[] = L"Injected_dll_base -> 0x%p";
-        ShellcodeSprintfW(g_shellcodeLogBuffer, sizeof(g_shellcodeLogBuffer)/sizeof(WCHAR), ab, pResources->Injected_dll_base);
-        my_OutputDebugStringW(g_shellcodeLogBuffer);
         
-        __declspec(allocate(".stub")) static const WCHAR sd[] = L"Shellcode_base ->  0x%p";
-        ShellcodeSprintfW(g_shellcodeLogBuffer, sizeof(g_shellcodeLogBuffer)/sizeof(WCHAR), sd, pResources->Injected_Shellcode_base);
-        my_OutputDebugStringW(g_shellcodeLogBuffer);
+        LOG_W(L"Hello from injected shellcode!");
+        LOG_W(L"Injected_dll_base -> 0x%p", pResources->Injected_dll_base);
+        LOG_W(L"Shellcode_base ->  0x%p", pResources->Injected_Shellcode_base);
 
         // __debugbreak();
     }
