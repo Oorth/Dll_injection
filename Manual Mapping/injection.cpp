@@ -41,7 +41,7 @@ NTSTATUS SanityCheck()
     norm("\n.......................................SanityCheck.......................................");
 
     pDosHeader = (IMAGE_DOS_HEADER*) pSourceBase;
-    if (pDosHeader->e_magic != 0x5A4D)
+    if(pDosHeader->e_magic != 0x5A4D)
     {
         fuk("Invalid DOSHeader signature");
         return false;
@@ -49,7 +49,7 @@ NTSTATUS SanityCheck()
 
     //...............................................................................
 
-    if (Dll_Actual_Size < sizeof(IMAGE_DOS_HEADER))
+    if(Dll_Actual_Size < sizeof(IMAGE_DOS_HEADER))
     {
         fuk("Buffer too small for DOSHeader header");
         return false;
@@ -58,7 +58,7 @@ NTSTATUS SanityCheck()
     //...............................................................................
 
     peOffset = pDosHeader->e_lfanew;
-    if (peOffset + sizeof(IMAGE_NT_HEADERS) > Dll_Actual_Size)
+    if(peOffset + sizeof(IMAGE_NT_HEADERS) > Dll_Actual_Size)
     {
         fuk("e_lfanew points past buffer end");
         return false;   
@@ -103,7 +103,7 @@ NTSTATUS SanityCheck()
     //...............................................................................
 
     IMAGE_SECTION_HEADER* secs = (IMAGE_SECTION_HEADER*)secTable;
-    for (int i = 0; i < numSecs; ++i)
+    for(int i = 0; i < numSecs; ++i)
     {
         IMAGE_SECTION_HEADER &s = secs[i];
         if(s.PointerToRawData + s.SizeOfRawData > Dll_Actual_Size)
@@ -339,7 +339,7 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
             }
         }
     }
-    if (!stubSection)
+    if(!stubSection)
     {
         fuk("Could not find .stub section");
         return 0;
@@ -460,7 +460,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
     WORD* ordinals = (WORD*)(base + exp->AddressOfNameOrdinals);
     DWORD* functions = (DWORD*)(base + exp->AddressOfFunctions);
 
-    for (DWORD i = 0; i < exp->NumberOfNames; ++i)
+    for(DWORD i = 0; i < exp->NumberOfNames; ++i)
     {
         char* name = (char*)(base + nameRVAs[i]);
         if(_stricmp(name, funcName) == 0)
@@ -486,58 +486,255 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 #pragma region Shellcode
 #pragma code_seg(push, ".stub")
 
+    #define S_OK ((HRESULT)0L)                                                  // Common HRESULT for success
+    #define STRSAFE_E_INSUFFICIENT_BUFFER ((HRESULT)0x8007007AL)                // From strsafe.h
+
     typedef int(WINAPI* pfnMessageBoxW)(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
     typedef void(WINAPI* pfnOutputDebugStringW)(LPCWSTR lpOutputString);
+    typedef HRESULT(WINAPI* pfnStringCchPrintfW)(LPWSTR pszDest, size_t cchDest, LPCWSTR pszFormat, ...);
 
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    __declspec(allocate(".stub")) static const WCHAR kNtdll[] = L"ntdll.dll";
     __declspec(allocate(".stub")) static const WCHAR kUsr32[] = L"user32.dll";
     __declspec(allocate(".stub")) static const WCHAR hKernelbase[] = L"kernelbase.dll";
+
     __declspec(allocate(".stub")) static const CHAR MessageBoxWFunction[] = "MessageBoxW";
     __declspec(allocate(".stub")) static const CHAR OutputDebugStringWFunction[] = "OutputDebugStringW";
 
     __declspec(allocate(".stub")) pfnMessageBoxW my_MessageBoxW = nullptr;
     __declspec(allocate(".stub")) pfnOutputDebugStringW my_OutputDebugStringW = nullptr;
 
+    __declspec(allocate(".stub")) static const WCHAR g_hexChars[] = L"0123456789ABCDEF";
 
-    extern "C" __declspec(noinline) void __stdcall HelperSplitFilename(const WCHAR* full, SIZE_T fullLen, const WCHAR** outName, SIZE_T* outLen)
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    __declspec(noinline) void __stdcall HelperSplitFilename(const WCHAR* full, SIZE_T fullLen, const WCHAR** outName, SIZE_T* outLen)
     {
         SIZE_T i = fullLen;
-        while (i > 0)
+        while(i > 0)
         {
             WCHAR c = full[i - 1];
-            if (c == L'\\' || c == L'/') break;
+            if(c == L'\\' || c == L'/') break;
             --i;
         }
         *outName = full + i;
         *outLen  = fullLen - i;
     }
 
-    extern "C" __declspec(noinline) bool __stdcall isSame(const char* a, const char* b)
+    __declspec(noinline) bool __stdcall isSame(const char* a, const char* b)
     {
-        while (*a && *b)
+        while(*a && *b)
         {
             char ca = *a, cb = *b;
-            if (ca >= 'A' && ca <= 'Z') ca += ('a' - 'A');
-            if (cb >= 'A' && cb <= 'Z') cb += ('a' - 'A');
-            if (ca != cb) return false;
+            if(ca >= 'A' && ca <= 'Z') ca += ('a' - 'A');
+            if(cb >= 'A' && cb <= 'Z') cb += ('a' - 'A');
+            if(ca != cb) return false;
             ++a; ++b;
         }
         return (*a == '\0' && *b == '\0');
     }
 
-    extern "C" __declspec(noinline) bool __stdcall isSameW(const WCHAR* a, const WCHAR* b, SIZE_T len)
+    __declspec(noinline) bool __stdcall isSameW(const WCHAR* a, const WCHAR* b, SIZE_T len)
     {
-        for (SIZE_T i = 0; i < len; i++)
+        for(SIZE_T i = 0; i < len; i++)
         {
             WCHAR ca = a[i], cb = b[i];
             // tolower for ASCII A–Z
-            if (ca >= L'A' && ca <= L'Z') ca += 32;
-            if (cb >= L'A' && cb <= L'Z') cb += 32;
-            if (ca != cb) return false;
+            if(ca >= L'A' && ca <= L'Z') ca += 32;
+            if(cb >= L'A' && cb <= L'Z') cb += 32;
+            if(ca != cb) return false;
         }
         return true;
     }
 
-    extern "C" __declspec(noinline) static void* __stdcall ShellcodeFindExportAddress(HMODULE hModule, const char* funcName)
+
+    __declspec(noinline) static WCHAR* __stdcall UllToHexW(unsigned __int64 val, WCHAR* buf_end, int max_chars)
+    {
+        // Helper to convert unsigned long long to hex string
+        // Writes to buffer from right to left, returns pointer to start of written string in buffer
+        if(max_chars <= 0) return buf_end;
+        
+        WCHAR* p = buf_end;
+        *p = L'\0';
+        if(val == 0 && max_chars > 0)
+        {
+            --p;
+            *p = L'0';
+            
+            return p;
+        }
+        int count = 0;
+        while(val > 0 && count < max_chars)
+        {
+            --p;
+            *p = g_hexChars[val & 0xF];
+            val >>= 4;
+            count++;
+        }
+        return p;
+    }
+
+    __declspec(noinline) static WCHAR* __stdcall IntToDecW(int val, WCHAR* buf_end, int max_chars)
+    {
+        // Helper to convert integer to decimal string
+        // Writes to buffer from right to left, returns pointer to start of written string in buffer
+        if(max_chars <= 0) return buf_end;
+
+        WCHAR* p = buf_end;
+        *p = L'\0';
+        if(val == 0 && max_chars > 0)
+        {
+            --p;
+            *p = L'0';
+            
+            return p;
+        }
+        
+        bool negative = false;
+        if(val < 0)
+        {
+            negative = true;
+            val = -val;                             // Make positive, careful with INT_MIN
+            if(val < 0)
+            {   
+                // Overflow for INT_MIN
+                // Handle INT_MIN specifically if needed, or just let it be large positive
+            }
+        }
+
+        int count = 0;
+        while(val > 0 && count < max_chars)
+        {
+            --p;
+            *p = L'0' + (val % 10);
+            val /= 10;
+            count++;
+        }
+        if(negative && count < max_chars)
+        {
+            --p;
+            *p = L'-';
+        }
+        return p;
+    }
+
+    __declspec(noinline) static int __cdecl ShellcodeSprintfW(LPWSTR pszDest, size_t cchDest, LPCWSTR pszFormat, ...)
+    {
+        // Supports: %s (LPCWSTR), %hs (LPCSTR), %p (void* as hex), %X (unsigned int as hex), %d (int as dec)
+        // Returns number of characters written (excluding null terminator), or -1 on error/truncation
+        
+        if(!pszDest || !pszFormat || cchDest == 0) return -1;
+
+        LPWSTR pDest = pszDest;
+        LPCWSTR pFmt = pszFormat;
+        size_t remaining = cchDest -1;      // Space for null terminator
+
+        va_list args;
+        va_start(args, pszFormat);
+
+        WCHAR tempNumBuf[24];               // Buffer for number to string conversions (e.g., 64-bit hex + null)
+
+        while(*pFmt && remaining > 0)
+        {
+            if(*pFmt == L'%')
+            {
+                pFmt++;
+                switch(*pFmt)
+                {
+                    case L's': // Wide string
+                    {
+                        LPCWSTR str_arg = va_arg(args, LPCWSTR);
+                        if(!str_arg) str_arg = L"(null)";
+                        while(*str_arg && remaining > 0)
+                        {
+                            *pDest++ = *str_arg++;
+                            remaining--;
+                        }
+                        break;
+                    }
+
+                    case L'h': // Potentially char* string
+                    {    
+                        if(*(pFmt + 1) == L's')
+                        {
+                            pFmt++; // consume 's'
+                            LPCSTR str_arg_a = va_arg(args, LPCSTR);
+                            if(!str_arg_a) str_arg_a = "(null)";
+                            while(*str_arg_a && remaining > 0)
+                            {
+                                *pDest++ = (WCHAR)(*str_arg_a++); // Basic ASCII to WCHAR conversion
+                                remaining--;
+                            }
+                        } 
+                        else  // Not 'hs', treat as literal 'h'
+                        {
+                            if(remaining > 0) { *pDest++ = L'%'; remaining--; }
+                            if(remaining > 0) { *pDest++ = L'h'; remaining--; }
+                        }
+                        break;
+                    }
+
+                    case L'p': // Pointer (hex)
+                    case L'X': // Hex unsigned int (can be extended for %llX for 64-bit)
+                    {
+                        unsigned __int64 val_arg;
+                        if(*pFmt == L'p') val_arg = (unsigned __int64)va_arg(args, void*);
+                        else val_arg = (unsigned __int64)va_arg(args, unsigned int); // Promote to 64-bit for UllToHexW
+
+                        WCHAR* num_str_start = UllToHexW(val_arg, tempNumBuf + (sizeof(tempNumBuf)/sizeof(WCHAR)-1), (sizeof(tempNumBuf)/sizeof(WCHAR)-1) );
+                        while(*num_str_start && remaining > 0)
+                        {
+                            *pDest++ = *num_str_start++;
+                            remaining--;
+                        }
+                        break;
+                    }
+                    
+                    case L'd': // Integer (decimal)
+                    {
+                        int val_arg = va_arg(args, int);
+                        
+                        WCHAR* num_str_start = IntToDecW(val_arg, tempNumBuf + (sizeof(tempNumBuf)/sizeof(WCHAR)-1), (sizeof(tempNumBuf)/sizeof(WCHAR)-1) );
+                        while(*num_str_start && remaining > 0)
+                        {
+                            *pDest++ = *num_str_start++;
+                            remaining--;
+                        }
+                        break;
+                    }
+                    
+                    case L'%': // Literal percent
+                    {
+                        if(remaining > 0) { *pDest++ = L'%'; remaining--; }
+                        break;
+                    }
+                        
+                    default: // Unknown format specifier, print literally
+                    {
+                        if(remaining > 0) { *pDest++ = L'%'; remaining--; }
+                        if(*pFmt && remaining > 0) { *pDest++ = *pFmt; remaining--; } // Print the char after %
+                        break;
+                    }
+                }
+            } 
+            else 
+            {
+                *pDest++ = *pFmt;
+                remaining--;
+            }
+            if(*pFmt) pFmt++; // Move to next format char if not end of string
+        }
+
+        va_end(args);
+        *pDest = L'\0'; // Null terminate
+
+        if(*pFmt != L'\0') return -1; // Format string not fully processed (ran out of buffer)
+        return (int)(pDest - pszDest); // Number of characters written
+    }
+
+
+    __declspec(noinline) static void* __stdcall ShellcodeFindExportAddress(HMODULE hModule, const char* funcName)
     {
         if(!hModule || !funcName) return nullptr;
 
@@ -577,7 +774,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         return nullptr;
     }
 
-    extern "C" __declspec(noinline) void __stdcall shellcode(LPVOID lpParameter)
+    __declspec(noinline) void __stdcall shellcode(LPVOID lpParameter)
     {
         struct _LIBS
         {
@@ -611,7 +808,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         _RESOURCES* pResources = (_RESOURCES*)lpParameter;
 
         #ifdef _M_IX86
-            PEB* pPEB = (PEB*) __readgsqword(0x30);
+            PEB* pPEB = (PEB*) __readfsqword(0x30);
         #else
             PEB* pPEB = (PEB*) __readgsqword(0x60);   
         #endif
@@ -637,6 +834,9 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 
                 k32len = sizeof(hKernelbase)/sizeof(WCHAR) - 1;
                 if(nameLen == k32len && isSameW(namePtr, hKernelbase, k32len)) sLibs.hKERNELBASE = (HMODULE)entry->DllBase;
+
+                k32len = sizeof(kNtdll)/sizeof(WCHAR) - 1;
+                if(nameLen == k32len && isSameW(namePtr, kNtdll, k32len)) sLibs.hHookedNtdll = (HMODULE)entry->DllBase;
             }
             current = current->Flink;
         }
@@ -655,7 +855,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         __declspec(allocate(".stub")) static const WCHAR INJECTED[] = L"INJECTED"; __declspec(allocate(".stub")) static const WCHAR s2[] = L"Hello from injected shellcode!";
         // my_MessageBoxW(NULL, s2, INJECTED, MB_OK | MB_TOPMOST);
         my_OutputDebugStringW(s2);
-        
+
         __declspec(allocate(".stub")) static const WCHAR s3[] = L"Shellcode is injected at -> ";
         my_OutputDebugStringW(s3);
         
