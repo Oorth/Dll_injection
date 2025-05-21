@@ -506,6 +506,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
     __declspec(allocate(".stub")) pfnOutputDebugStringW my_OutputDebugStringW = nullptr;
 
     __declspec(allocate(".stub")) static const WCHAR g_hexChars[] = L"0123456789ABCDEF";
+    __declspec(allocate(".stub")) static WCHAR g_shellcodeLogBuffer[256];
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -640,6 +641,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
             if(*pFmt == L'%')
             {
                 pFmt++;
+
                 switch(*pFmt)
                 {
                     case L's': // Wide string
@@ -705,7 +707,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                     }
                     
                     case L'%': // Literal percent
-                    {
+                    {                        __debugbreak();
                         if(remaining > 0) { *pDest++ = L'%'; remaining--; }
                         break;
                     }
@@ -852,13 +854,21 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
             
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        __declspec(allocate(".stub")) static const WCHAR INJECTED[] = L"INJECTED"; __declspec(allocate(".stub")) static const WCHAR s2[] = L"Hello from injected shellcode!";
-        // my_MessageBoxW(NULL, s2, INJECTED, MB_OK | MB_TOPMOST);
-        my_OutputDebugStringW(s2);
+        // __declspec(allocate(".stub")) static const WCHAR INJECTED[] = L"INJECTED"; __declspec(allocate(".stub")) static const WCHAR s2[] = L"Hello from injected shellcode!";
+        // // my_MessageBoxW(NULL, s2, INJECTED, MB_OK | MB_TOPMOST);
+        // my_OutputDebugStringW(s2);
 
-        __declspec(allocate(".stub")) static const WCHAR s3[] = L"Shellcode is injected at -> ";
-        my_OutputDebugStringW(s3);
+        __declspec(allocate(".stub")) static const WCHAR s2[] = L"Hello from injected shellcode!";
+        ShellcodeSprintfW(g_shellcodeLogBuffer, sizeof(g_shellcodeLogBuffer)/sizeof(WCHAR), s2);
+        my_OutputDebugStringW(g_shellcodeLogBuffer);        
+
+        __declspec(allocate(".stub")) static const WCHAR ab[] = L"Injected_dll_base -> 0x%p";
+        ShellcodeSprintfW(g_shellcodeLogBuffer, sizeof(g_shellcodeLogBuffer)/sizeof(WCHAR), ab, pResources->Injected_dll_base);
+        my_OutputDebugStringW(g_shellcodeLogBuffer);
         
+        __declspec(allocate(".stub")) static const WCHAR sd[] = L"Shellcode_base ->  0x%p";
+        ShellcodeSprintfW(g_shellcodeLogBuffer, sizeof(g_shellcodeLogBuffer)/sizeof(WCHAR), sd, pResources->Injected_Shellcode_base);
+        my_OutputDebugStringW(g_shellcodeLogBuffer);
 
         // __debugbreak();
     }
