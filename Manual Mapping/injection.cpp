@@ -825,6 +825,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
     __declspec(noinline) void __stdcall shellcode(LPVOID lpParameter)
     {
         #pragma region Shellcode_setup
+
         struct _LIBS
         {
             HMODULE hHookedNtdll;
@@ -948,8 +949,87 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         
         #pragma endregion
 
+        #pragma region Relocations
 
+        size_t delta = (uintptr_t)pResources->Injected_dll_base - pOptionalHeader_injected_dll->ImageBase;
+        if(delta)
+        {
+            LOG_W(L"            Relocation\nDelta calculated: 0x%p", (void*)delta);
 
+            IMAGE_DATA_DIRECTORY* dataDir = pOptionalHeader_injected_dll->DataDirectory;
+            IMAGE_DATA_DIRECTORY relocDirEntry = dataDir[IMAGE_DIRECTORY_ENTRY_BASERELOC];
+
+            if(relocDirEntry.Size > sizeof(IMAGE_BASE_RELOCATION) && relocDirEntry.VirtualAddress != 0)
+            {
+                BYTE* pCurrentRelocBlockAddress = pResources->Injected_dll_base + relocDirEntry.VirtualAddress;
+                BYTE* pEndOfRelocData = pCurrentRelocBlockAddress + relocDirEntry.Size;
+                UINT noOfAbsoluteRelocs = 0, noOfHighlowRelocs = 0, noOfDir64Relocs = 0; 
+
+                while(pCurrentRelocBlockAddress < pEndOfRelocData)
+                {
+                    IMAGE_BASE_RELOCATION* pBlock = (IMAGE_BASE_RELOCATION*)pCurrentRelocBlockAddress;
+
+                    if(pBlock->SizeOfBlock == 0) { LOG_W(L"Encountered a relocation block with SizeOfBlock = 0. Ending relocation processing."); break;}
+                    
+                    DWORD BaseRVAForBlock = pBlock->VirtualAddress;
+                    size_t numberOfEntriesInBlock = (pBlock->SizeOfBlock - sizeof(IMAGE_BASE_RELOCATION)) / 2;                // 2 -> sizeof(word)
+                    WORD* pListEntry = (WORD*)(pBlock + 1);
+
+                    for(UINT i = 0; i < numberOfEntriesInBlock; ++i)
+                    {
+                        WORD currentEntry = pListEntry[i];
+                        int relocationType = currentEntry >> 12;
+                        int offsetInPage = currentEntry & 0x0FFF;
+                        
+                        BYTE* pAddressToPatch = pResources->Injected_dll_base + BaseRVAForBlock + offsetInPage;
+
+                        switch(relocationType)
+                        {
+                            case IMAGE_REL_BASED_ABSOLUTE:
+                            {
+                                //Do nothing. This is a padding/sentinel entry
+                                noOfAbsoluteRelocs += 1;
+                                break;
+                            }
+
+                            case IMAGE_REL_BASED_HIGHLOW:
+                            {
+                                DWORD* patchValuePointer = (DWORD*)pAddressToPatch;
+                                *patchValuePointer = *patchValuePointer + (DWORD)delta;
+                                
+                                // LOG_W(L"Applied HIGHLOW relocation at [0x%p] by adding [0x%X]", pAddressToPatch, delta);
+                                noOfHighlowRelocs +=1;
+                                break;
+                            }           
+
+                            case IMAGE_REL_BASED_DIR64:
+                            {
+                                DWORD_PTR* patchValuePointer = (DWORD_PTR*)pAddressToPatch;
+                                *patchValuePointer = *patchValuePointer + delta;
+
+                                // LOG_W(L"Applied IMAGE_REL_BASED_DIR64 relocation at [0x%p] by adding [0x%X]", pAddressToPatch, delta);
+                                noOfDir64Relocs +=1;
+                                break;
+                            }
+
+                            default:
+                            {
+                                LOG_W(L"Unknown or unhandled relocation type: 0x%hX at 0x%p", (WORD)relocationType, pAddressToPatch);
+                                break;
+                            }              
+                        }
+                    }
+                    pCurrentRelocBlockAddress = pCurrentRelocBlockAddress + pBlock->SizeOfBlock;
+                }
+                LOG_W(L"Absolute relocations: %d\nHighLow relocations: %d\nDir64 relocations: %d", noOfAbsoluteRelocs, noOfHighlowRelocs, noOfDir64Relocs);
+            }
+            else LOG_W(L"No relocation data found or .reloc section is empty");
+
+            LOG_W(L"            Relocations Done\n-----------------------------------------------------------");
+
+        }
+        else LOG_W(L"No relocations required");
+        #pragma endregion
 
         LOG_W(L"[END_OF_SHELLCODE]");
         // __debugbreak();
