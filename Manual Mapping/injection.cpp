@@ -28,7 +28,9 @@ DWORD peOffset = 0;
 struct _RESOURCES
 {
     BYTE* Injected_dll_base;
+    BYTE* ResourceBase;
     BYTE* Injected_Shellcode_base;
+
 }sResources_for_shellcode;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -344,14 +346,6 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
         fuk("Could not find .stub section");
         return 0;
     } norm("\nStart location of ", CYAN"", stubSection->Name, RESET" is", CYAN" 0x", (uintptr_t)vpStartAddressOfShellcode, RESET" size[", CYAN"0x", shellcodeBlockSize, RESET"]");
-    
-    // BYTE* pShellcodeTargetBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hproc, nullptr, shellcodeBlockSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
-    // if(!pShellcodeTargetBase)
-    // {
-    //     fuk("Coudnt allocate memory ", GetLastError());
-    //     delete[] pSourceBase;
-    //     return 0;
-    // } norm(std::hex, "\n\nAllocated ", CYAN"0x", shellcodeBlockSize, " bytes (", shellcodeBlockSize / 1024.0, " KB)", RESET" remote Memory at -> ", CYAN"0x", (uintptr_t)pShellcodeTargetBase);
 
     BYTE* pShellcodeResourceBase = reinterpret_cast<BYTE*>(VirtualAllocEx(hproc, nullptr, shellcodeBlockSize + sizeof(_RESOURCES), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
     if(!pShellcodeResourceBase)
@@ -372,6 +366,7 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
         BYTE* pShellcodeTargetBase = pShellcodeResourceBase + sizeof(sResources_for_shellcode);
         sResources_for_shellcode.Injected_dll_base = pTargetBase;
         sResources_for_shellcode.Injected_Shellcode_base = pShellcodeTargetBase;
+        sResources_for_shellcode.ResourceBase = pShellcodeResourceBase;
     //--------------------------------------------------fill resources data before this------------------
 
     if(!WriteProcessMemory(hproc, pShellcodeResourceBase, &sResources_for_shellcode, sizeof(sResources_for_shellcode), nullptr))
@@ -496,10 +491,10 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         { \
             __declspec(allocate(".stub")) static const WCHAR PASTE(_fmt_str_, __LINE__)[] = fmt_literal; \
             \
-            if (my_OutputDebugStringW) \
+            if(my_OutputDebugStringW) \
             { \
                 int written = ShellcodeSprintfW(g_shellcodeLogBuffer, sizeof(g_shellcodeLogBuffer)/sizeof(WCHAR), PASTE(_fmt_str_, __LINE__), ##__VA_ARGS__); \
-                if (written >= 0) \
+                if(written >= 0) \
                 { \
                     my_OutputDebugStringW(g_shellcodeLogBuffer); \
                 } else my_OutputDebugStringW(L"LOG_W formatting error or buffer too small."); \
@@ -641,7 +636,15 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 
     __declspec(noinline) static int __cdecl ShellcodeSprintfW(LPWSTR pszDest, size_t cchDest, LPCWSTR pszFormat, ...)
     {
-        // Supports: %s (LPCWSTR), %hs (LPCSTR), %p (void* as hex), %X (unsigned int as hex), %d (int as dec)
+        // * Supported format specifiers:
+        // * - %s  : Wide string (LPCWSTR)
+        // * - %hs : ANSI string (LPCSTR)
+        // * - %p  : Pointer value in hex
+        // * - %X  : Unsigned int in hex
+        // * - %hX : Unsigned short in hex 
+        // * - %hx : Unsigned short in hex (lowercase)
+        // * - %d  : Signed int in decimal
+        // * - %%  : Literal percent sign
         // Returns number of characters written (excluding null terminator), or -1 on error/truncation
         
         if(!pszDest || !pszFormat || cchDest == 0) return -1;
@@ -675,28 +678,52 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                         break;
                     }
 
-                    case L'h': // Potentially char* string
-                    {    
+                    case L'h': // Potentially char* string OR short hex/dec
                         if(*(pFmt + 1) == L's')
-                        {
+                        { // %hs
                             pFmt++; // consume 's'
                             LPCSTR str_arg_a = va_arg(args, LPCSTR);
-                            if(!str_arg_a) str_arg_a = "(null)";
+                            if(!str_arg_a) str_arg_a = "(null)"; // or some other indicator
                             while(*str_arg_a && remaining > 0)
                             {
-                                *pDest++ = (WCHAR)(*str_arg_a++); // Basic ASCII to WCHAR conversion
+                                *pDest++ = (WCHAR)(*str_arg_a++);
                                 remaining--;
                             }
                         } 
-                        else  // Not 'hs', treat as literal 'h'
+                        else if(*(pFmt + 1) == L'X' || *(pFmt + 1) == L'x') 
+                        { // %hX or %hx
+                            pFmt++; // consume 'X' or 'x'
+                            // Arguments smaller than int are promoted to int when passed via va_arg
+                            unsigned short val_short_arg = (unsigned short)va_arg(args, unsigned int);
+                            WCHAR* num_str_start = UllToHexW(val_short_arg, tempNumBuf + (sizeof(tempNumBuf)/sizeof(WCHAR)-1), (sizeof(tempNumBuf)/sizeof(WCHAR)-1) );
+                            while(*num_str_start && remaining > 0)
+                            {
+                                *pDest++ = *num_str_start++;
+                                remaining--;
+                            }
+                        }
+                        // Add %hd for short decimal if needed
+                        // else if(*(pFmt + 1) == L'd') { /* ... */ }
+                        else
+                        { // Not 'hs' or 'hX', treat as literal 'h'
+                            if(remaining > 0) { *pDest++ = L'%'; remaining--; } // Re-emit the %
+                            if(remaining > 0) { *pDest++ = L'h'; remaining--; } // Emit the h
+                            // The character that was after 'h' (which wasn't s, X, or x) will be processed in the next loop iteration
+                        }
+                    break;
+
+                    case L'p': // Pointer (hex) - uses unsigned __int64 for UllToHexW
+                    {
+                        unsigned __int64 val_ptr_arg = (unsigned __int64)va_arg(args, void*);
+                        WCHAR* num_str_start = UllToHexW(val_ptr_arg, tempNumBuf + (sizeof(tempNumBuf)/sizeof(WCHAR)-1), (sizeof(tempNumBuf)/sizeof(WCHAR)-1));
+                        while(*num_str_start && remaining > 0)
                         {
-                            if(remaining > 0) { *pDest++ = L'%'; remaining--; }
-                            if(remaining > 0) { *pDest++ = L'h'; remaining--; }
+                            *pDest++ = *num_str_start++;
+                            remaining--;
                         }
                         break;
                     }
 
-                    case L'p': // Pointer (hex)
                     case L'X': // Hex unsigned int (can be extended for %llX for 64-bit)
                     {
                         unsigned __int64 val_arg;
@@ -880,10 +907,19 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         __declspec(allocate(".stub")) static const WCHAR s2[] = L"Hello from injected shellcode!";
         ShellcodeSprintfW(g_shellcodeLogBuffer, sizeof(g_shellcodeLogBuffer)/sizeof(WCHAR), s2);
         
-        LOG_W(L"Hello from injected shellcode!");
+        LOG_W(L"//////////////////////////////////////////////////////////");
         LOG_W(L"Injected_dll_base -> 0x%p", pResources->Injected_dll_base);
+        LOG_W(L"Resource_base ->  0x%p\n", pResources->ResourceBase);
         LOG_W(L"Shellcode_base ->  0x%p", pResources->Injected_Shellcode_base);
+        LOG_W(L"-----------------------------------------------------------");
 
+
+        IMAGE_DOS_HEADER* pDosHeader_injected_dll = (IMAGE_DOS_HEADER*) pResources->Injected_dll_base;
+        if(pDosHeader_injected_dll->e_magic != 0x5A4D)
+        {
+            LOG_W(L"Invalid DOSHeader signature");
+            return;
+        }else LOG_W(L"DOSHeader signature-> 0x%hX", pDosHeader_injected_dll->e_magic);
         // __debugbreak();
     }
 
