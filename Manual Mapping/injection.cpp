@@ -824,6 +824,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 
     __declspec(noinline) void __stdcall shellcode(LPVOID lpParameter)
     {
+        #pragma region Shellcode_setup
         struct _LIBS
         {
             HMODULE hHookedNtdll;
@@ -856,7 +857,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         _RESOURCES* pResources = (_RESOURCES*)lpParameter;
 
         #ifdef _M_IX86
-            PEB* pPEB = (PEB*) __readfsqword(0x30);
+            PEB* pPEB = (PEB*) __readfsdword(0x30);
         #else
             PEB* pPEB = (PEB*) __readgsqword(0x60);   
         #endif
@@ -913,13 +914,44 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         LOG_W(L"Shellcode_base ->  0x%p", pResources->Injected_Shellcode_base);
         LOG_W(L"-----------------------------------------------------------");
 
-
         IMAGE_DOS_HEADER* pDosHeader_injected_dll = (IMAGE_DOS_HEADER*) pResources->Injected_dll_base;
         if(pDosHeader_injected_dll->e_magic != 0x5A4D)
         {
-            LOG_W(L"Invalid DOSHeader signature");
+            LOG_W(L"[!!!!] Invalid DOSHeader signature");
             return;
-        }else LOG_W(L"DOSHeader signature-> 0x%hX", pDosHeader_injected_dll->e_magic);
+        }else LOG_W(L"DOSHeader signature-> 0x%hX [OK]", pDosHeader_injected_dll->e_magic);
+        
+        
+        DWORD peOffset_injected_dll = pDosHeader_injected_dll->e_lfanew;
+        
+        IMAGE_NT_HEADERS* pNtHeader_injected_dll = (IMAGE_NT_HEADERS*)(pResources->Injected_dll_base + peOffset_injected_dll);
+        if(pNtHeader_injected_dll->Signature != IMAGE_NT_SIGNATURE)
+        {
+            LOG_W(L"[!!!!] Invalid NTHeader signature");
+            return;
+        }else LOG_W(L"NTHeader signature-> 0x%X [OK]", pNtHeader_injected_dll->Signature);
+
+        IMAGE_OPTIONAL_HEADER* pOptionalHeader_injected_dll = &pNtHeader_injected_dll->OptionalHeader;
+        if(pOptionalHeader_injected_dll->Magic != IMAGE_NT_OPTIONAL_HDR_MAGIC)
+        {
+            LOG_W(L"[!!!!] Invalid OptionalHeader Magic");
+            return;
+        }else LOG_W(L"OptionalHeader Magic-> 0x%X [OK]", pOptionalHeader_injected_dll->Magic);
+
+        IMAGE_FILE_HEADER* pFileHeader_injected_dll = (IMAGE_FILE_HEADER*)(&pNtHeader_injected_dll->FileHeader);
+        if(pFileHeader_injected_dll->Machine != IMAGE_FILE_MACHINE_AMD64)
+        {
+            LOG_W(L"[!!!!] Invalid FileHeader Machine type");
+            return;
+        }else LOG_W(L"FileHeader Machine-> 0x%X [OK]", pFileHeader_injected_dll->Machine);
+        LOG_W(L"-----------------------------------------------------------");
+        
+        #pragma endregion
+
+
+
+
+        LOG_W(L"[END_OF_SHELLCODE]");
         // __debugbreak();
     }
 
