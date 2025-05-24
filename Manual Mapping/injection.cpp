@@ -410,9 +410,8 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
 
     norm("\n===========================================ManualMap===========================================");
 
-    fuk("!Base Relocation"); return 0;
-    fuk("!Import Resolution (IAT Patching)"); return 0;
     fuk("!TLS Callbacks"); return 0;
+    fuk("!Import Resolution (IAT Patching)"); return 0;
     fuk("!Memory Protections Hardening"); return 0;
     fuk("!Call the Entry Point"); return 0;
     /*
@@ -506,6 +505,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
     typedef int(WINAPI* pfnMessageBoxW)(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
     typedef void(WINAPI* pfnOutputDebugStringW)(LPCWSTR lpOutputString);
     typedef HRESULT(WINAPI* pfnStringCchPrintfW)(LPWSTR pszDest, size_t cchDest, LPCWSTR pszFormat, ...);
+    typedef VOID (NTAPI *PIMAGE_TLS_CALLBACK)(PVOID DllHandle, DWORD Reason, PVOID Reserved);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1028,7 +1028,59 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
             LOG_W(L"            Relocations Done\n-----------------------------------------------------------");
 
         }
-        else LOG_W(L"No relocations required");
+        else LOG_W(L"No relocations required\n-----------------------------------------------------------");
+        #pragma endregion
+
+        #pragma region TLSCallbacks
+
+        LOG_W(L"            TLS_Callbacks");
+
+        IMAGE_DATA_DIRECTORY* pDataDirectoryArray = pNtHeader_injected_dll->OptionalHeader.DataDirectory;
+        IMAGE_DATA_DIRECTORY tlsDirEntryStruct  = pDataDirectoryArray[IMAGE_DIRECTORY_ENTRY_TLS];
+
+        if(tlsDirEntryStruct.Size < sizeof(IMAGE_TLS_DIRECTORY) || tlsDirEntryStruct.VirtualAddress == 0)
+        {
+            LOG_W(L"No TLS Directory found, or its size is invalid/empty. Skipping");
+        }
+        else
+        {
+            LOG_W(L"TLS Directory Entry: VA=0x%X, Size=0x%X", tlsDirEntryStruct.VirtualAddress, tlsDirEntryStruct.Size);
+
+            BYTE* pMemoryAddressOfTlsDirectoryStruct = pResources->Injected_dll_base + tlsDirEntryStruct.VirtualAddress;
+            IMAGE_TLS_DIRECTORY* pTlsStruct = (IMAGE_TLS_DIRECTORY*)pMemoryAddressOfTlsDirectoryStruct;
+            LOG_W(L"Actual IMAGE_TLS_DIRECTORY structure is at 0x%p", pMemoryAddressOfTlsDirectoryStruct);
+
+            uintptr_t vaOfCallbackArrayPointer = pTlsStruct->AddressOfCallBacks;
+            if(vaOfCallbackArrayPointer == NULL) LOG_W(L"TLS Directory.AddressOfCallBacks is NULL, no callback array defined");
+            else
+            {
+                auto rvaOfCallbackArray = (uintptr_t)vaOfCallbackArrayPointer - pOptionalHeader_injected_dll->ImageBase;
+                
+                //PIMAGE_TLS_CALLBACK* is a pointer to a pointer to a callback function
+                PIMAGE_TLS_CALLBACK* pActualMemoryAddressOfCallbackArray = (PIMAGE_TLS_CALLBACK*)(pResources->Injected_dll_base + rvaOfCallbackArray);
+
+                PIMAGE_TLS_CALLBACK* currentArrayElementPtr = pActualMemoryAddressOfCallbackArray;
+                LOG_W(L"VA of callback array is 0x%p. Actual memory address of this array is 0x%p", vaOfCallbackArrayPointer, pActualMemoryAddressOfCallbackArray);
+
+                UINT NoOfCallBacks = 0;
+                while(*currentArrayElementPtr != NULL)
+                {
+                    uintptr_t vaOfIndividualCallback = (uintptr_t)*currentArrayElementPtr;
+                    uintptr_t rvaOfIndividualCallback = vaOfIndividualCallback - pOptionalHeader_injected_dll->ImageBase;
+
+                    PIMAGE_TLS_CALLBACK actualFunctionAddressToCall = (PIMAGE_TLS_CALLBACK)(pResources->Injected_dll_base + rvaOfIndividualCallback);
+                    LOG_W(L"Found TLS callback entry. Original VA of function: 0x%p. Actual function address: 0x%p. Invoking...", (void*)vaOfIndividualCallback, actualFunctionAddressToCall);
+
+                    //Call it
+                    actualFunctionAddressToCall((PVOID)pResources->Injected_dll_base, DLL_PROCESS_ATTACH, NULL);
+                    ++currentArrayElementPtr;
+                    ++NoOfCallBacks;
+                }
+                LOG_W(L"Done TLS callbacks. Total callbacks: %d", NoOfCallBacks);
+            }            
+        }
+
+        LOG_W(L"            TLS_Callbacks\n-----------------------------------------------------------");
         #pragma endregion
 
         LOG_W(L"[END_OF_SHELLCODE]");
