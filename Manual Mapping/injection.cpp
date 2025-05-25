@@ -1053,11 +1053,22 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
             uintptr_t vaOfCallbackArrayPointer = pTlsStruct->AddressOfCallBacks;
             if(vaOfCallbackArrayPointer == NULL) LOG_W(L"TLS Directory.AddressOfCallBacks is NULL, no callback array defined");
             else
-            {
-                auto rvaOfCallbackArray = (uintptr_t)vaOfCallbackArrayPointer - pOptionalHeader_injected_dll->ImageBase;
-                
+            {   
                 //PIMAGE_TLS_CALLBACK* is a pointer to a pointer to a callback function
-                PIMAGE_TLS_CALLBACK* pActualMemoryAddressOfCallbackArray = (PIMAGE_TLS_CALLBACK*)(pResources->Injected_dll_base + rvaOfCallbackArray);
+                PIMAGE_TLS_CALLBACK* pActualMemoryAddressOfCallbackArray;
+
+                if(delta != 0)
+                {
+                    pActualMemoryAddressOfCallbackArray = (PIMAGE_TLS_CALLBACK*)vaOfCallbackArrayPointer;
+                    LOG_W(L"Delta non-zero. Assuming AddressOfCallBacks field (0x%p) absolute ptr to the callback array", (void*)vaOfCallbackArrayPointer);
+                }
+                else
+                {
+                    uintptr_t rvaOfCallbackArray = vaOfCallbackArrayPointer - pOptionalHeader_injected_dll->ImageBase;
+                    pActualMemoryAddressOfCallbackArray = (PIMAGE_TLS_CALLBACK*)(pResources->Injected_dll_base + rvaOfCallbackArray);
+                    
+                    LOG_W(L"Delta is zero. AddressOfCallBacks field (VA 0x%p) rebased to callback array ptr 0x%p", (void*)vaOfCallbackArrayPointer, (void*)pActualMemoryAddressOfCallbackArray);
+                }
 
                 PIMAGE_TLS_CALLBACK* currentArrayElementPtr = pActualMemoryAddressOfCallbackArray;
                 LOG_W(L"VA of callback array is 0x%p. Actual memory address of this array is 0x%p", vaOfCallbackArrayPointer, pActualMemoryAddressOfCallbackArray);
