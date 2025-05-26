@@ -505,7 +505,8 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
     typedef int(WINAPI* pfnMessageBoxW)(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
     typedef void(WINAPI* pfnOutputDebugStringW)(LPCWSTR lpOutputString);
     typedef HRESULT(WINAPI* pfnStringCchPrintfW)(LPWSTR pszDest, size_t cchDest, LPCWSTR pszFormat, ...);
-    typedef VOID (NTAPI *PIMAGE_TLS_CALLBACK)(PVOID DllHandle, DWORD Reason, PVOID Reserved);
+    typedef VOID(NTAPI *PIMAGE_TLS_CALLBACK)(PVOID DllHandle, DWORD Reason, PVOID Reserved);
+    typedef HMODULE(WINAPI* pfnLoadLibraryA)(LPCSTR lpLibFileName);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -513,11 +514,13 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
     __declspec(allocate(".stub")) static const WCHAR kUsr32[] = L"user32.dll";
     __declspec(allocate(".stub")) static const WCHAR hKernelbase[] = L"kernelbase.dll";
 
-    __declspec(allocate(".stub")) static const CHAR MessageBoxWFunction[] = "MessageBoxW";
-    __declspec(allocate(".stub")) static const CHAR OutputDebugStringWFunction[] = "OutputDebugStringW";
+    __declspec(allocate(".stub")) static const CHAR cMessageBoxWFunction[] = "MessageBoxW";
+    __declspec(allocate(".stub")) static const CHAR cOutputDebugStringWFunction[] = "OutputDebugStringW";
+    __declspec(allocate(".stub")) static const CHAR cLoadLibraryAFunction[] = "LoadLibraryA";
 
     __declspec(allocate(".stub")) pfnMessageBoxW my_MessageBoxW = nullptr;
     __declspec(allocate(".stub")) pfnOutputDebugStringW my_OutputDebugStringW = nullptr;
+    __declspec(allocate(".stub")) pfnLoadLibraryA my_LoadLibraryA = nullptr;
 
     __declspec(allocate(".stub")) static const WCHAR g_hexChars[] = L"0123456789ABCDEF";
     __declspec(allocate(".stub")) static WCHAR g_shellcodeLogBuffer[256];
@@ -702,6 +705,17 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                                 remaining--;
                             }
                         }
+                        // else if (*(pFmt + 1) == L'u') // handle %hu
+                        // {
+                        //     pFmt++; // consume 'u'
+                        //     unsigned short val = (unsigned short)va_arg(args, unsigned int);
+                        //     WCHAR* num_str_start = IntToDecW(val, tempNumBuf + (sizeof(tempNumBuf)/sizeof(WCHAR) - 1), (sizeof(tempNumBuf)/sizeof(WCHAR) - 1));
+                        //     while (*num_str_start && remaining > 0)
+                        //     {
+                        //         *pDest++ = *num_str_start++;
+                        //         remaining--;
+                        //     }
+                        // }
                         // Add %hd for short decimal if needed
                         // else if(*(pFmt + 1) == L'd') { /* ... */ }
                         else
@@ -782,44 +796,127 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
     }
 
 
-    __declspec(noinline) static void* __stdcall ShellcodeFindExportAddress(HMODULE hModule, const char* funcName)
+    __declspec(noinline) static void* __stdcall ShellcodeFindExportAddress(HMODULE hModule, LPCSTR lpProcNameOrOrdinal)
     {
-        if(!hModule || !funcName) return nullptr;
+        if(!hModule) return nullptr;
 
         BYTE* base = (BYTE*)hModule;
-        IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)base;
-        DWORD peOffset = dos->e_lfanew;
-        DWORD peSig = *(DWORD*)(base + peOffset);
         
-        base = (BYTE*)hModule;
-        dos = (IMAGE_DOS_HEADER*)base;
+        IMAGE_DOS_HEADER* dos = (IMAGE_DOS_HEADER*)base;
         if(dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
 
         IMAGE_NT_HEADERS* nt = (IMAGE_NT_HEADERS*)(base + dos->e_lfanew);
         if(nt->Signature != IMAGE_NT_SIGNATURE) return nullptr;
 
-        auto& dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
-        if(dir.VirtualAddress == 0) return nullptr;
+        IMAGE_DATA_DIRECTORY* pExportDataDir = &nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]; // Use a pointer for clarity
+        if (pExportDataDir->VirtualAddress == 0 || pExportDataDir->Size == 0) return nullptr;
 
-        IMAGE_EXPORT_DIRECTORY* exp = (IMAGE_EXPORT_DIRECTORY*)(base + dir.VirtualAddress);
-        DWORD* nameRVAs = (DWORD*)(base + exp->AddressOfNames);
-        WORD* ordinals = (WORD*)(base + exp->AddressOfNameOrdinals);
-        DWORD* functions = (DWORD*)(base + exp->AddressOfFunctions);
+        IMAGE_EXPORT_DIRECTORY* exp = (IMAGE_EXPORT_DIRECTORY*)(base + pExportDataDir->VirtualAddress);
+        DWORD* functions = (DWORD*)(base + exp->AddressOfFunctions); // RVAs to function bodies or forwarders
 
-        for(DWORD i = 0; i < exp->NumberOfNames; ++i)
-        {
-            char* name = (char*)(base + nameRVAs[i]);
-            if(isSame(name, funcName))
-            {
-                DWORD funcRVA = functions[ordinals[i]];
-                BYTE* addr = base + funcRVA;
 
-                // Forwarded export check
-                if(funcRVA >= dir.VirtualAddress && funcRVA < dir.VirtualAddress + dir.Size) return nullptr;
-                return (void*)addr;
+        // --- LOGIC TO DIFFERENTIATE NAME VS ORDINAL ---
+        bool isOrdinalLookup = false;
+        WORD ordinalToFind = 0;
+
+        #if defined(_WIN64)
+            if (((ULONG_PTR)lpProcNameOrOrdinal >> 16) == 0)
+            { // High bits of pointer are zero
+                isOrdinalLookup = true;
+                ordinalToFind = LOWORD((ULONG_PTR)lpProcNameOrOrdinal);
             }
+        #else // For 32-bit shellcode
+            // For 32-bit, HIWORD macro is on a DWORD. ULONG_PTR might be 64-bit if compiled for x64 targeting x86.
+            // Ensure lpProcNameOrOrdinal is treated as a 32-bit value for HIWORD.
+            if (HIWORD((DWORD)(ULONG_PTR)lpProcNameOrOrdinal) == 0)
+            { 
+                isOrdinalLookup = true;
+                ordinalToFind = LOWORD((DWORD)(ULONG_PTR)lpProcNameOrOrdinal);
+            }
+        #endif
+            // --- END DIFFERENTIATION LOGIC ---
+
+
+        if (isOrdinalLookup)
+        {
+            if (ordinalToFind < exp->Base || (ordinalToFind - exp->Base) >= exp->NumberOfFunctions)
+            {
+                // LOG_W(L"Ordinal %hu is out of range (Base: %u, NumberOfFunctions: %u)",
+                //       ordinalToFind, exp->Base, exp->NumberOfFunctions);
+                return nullptr; // Ordinal is not in the valid range for this export directory
+            }
+            
+            DWORD functionIndexInArray = ordinalToFind - exp->Base;
+            DWORD funcRVA = functions[functionIndexInArray];
+
+            if (funcRVA == 0)   // This RVA should not be 0 for a valid export, but check.
+            {   
+                // LOG_W(L"RVA for ordinal %hu (index %u) is 0.", ordinalToFind, functionIndexInArray);
+                return nullptr;
+            }
+
+            BYTE* addr = base + funcRVA;
+
+            // Forwarded export check: if the RVA points back into the export directory itself, it's a forwarder string
+            if (funcRVA >= pExportDataDir->VirtualAddress && funcRVA < (pExportDataDir->VirtualAddress + pExportDataDir->Size))
+            {
+                // char* forwardedName = (char*)addr;
+                // LOG_W(LOrdinal %hu is forwarded to '%hs'. Forwarding not implemented here.", ordinalToFind, forwardedName);
+                return nullptr; // This basic version doesn't resolve forwarded exports
+            }
+            return (void*)addr;
         }
-        return nullptr;
+        else
+        {
+            // --- NAME LOOKUP PATH ---
+            LPCSTR funcName = lpProcNameOrOrdinal; // Now we know it's intended as a name
+            if (!funcName || *funcName == '\0') return nullptr; // Basic check for null or empty name string
+
+            // LOG_W(L"    [SFEA] Looking up by name: %hs", funcName); // Your logging macro
+
+            DWORD* nameRVAs = (DWORD*)(base + exp->AddressOfNames);          // RVAs to ASCII name strings
+            WORD* nameOrdinals = (WORD*)(base + exp->AddressOfNameOrdinals); // Indices into the 'functions' array (NOT necessarily the export ordinals themselves)
+
+            for (DWORD i = 0; i < exp->NumberOfNames; ++i)
+            {
+                char* currentExportName = (char*)(base + nameRVAs[i]);
+            
+                if (isSame(currentExportName, funcName)) 
+                {
+                    WORD functionIndexInArray = nameOrdinals[i]; // This is the index into the 'functions' array
+            
+                    // Bounds check for the index obtained from nameOrdinals
+                    if (functionIndexInArray >= exp->NumberOfFunctions)
+                    {
+                        // LOG_W(L"    [SFEA] Name '%hs' gave an ordinal array index %hu out of bounds (%u).",
+                        //       funcName, functionIndexInArray, exp->NumberOfFunctions);
+                        return nullptr;
+                    }
+
+                    DWORD funcRVA = functions[functionIndexInArray];
+                    if (funcRVA == 0) return nullptr; // Should not happen for a named export pointing to a valid index
+
+                    BYTE* addr = base + funcRVA;
+
+                    // Forwarded export check
+                    if (funcRVA >= pExportDataDir->VirtualAddress && funcRVA < (pExportDataDir->VirtualAddress + pExportDataDir->Size))
+                    {
+                        // char* forwardedName = (char*)addr;
+                        // LOG_W(L"    [SFEA] Name '%hs' is forwarded to '%hs'. Forwarding not implemented here.", funcName, forwardedName);
+                        return nullptr; // Forwarding not handled
+                    }
+                    return (void*)addr;
+                }
+            }
+        
+            // LOG_W(L"    [SFEA] Name '%hs' not found in export table.", funcName);
+            return nullptr; // Name not found
+            // --- END NAME LOOKUP PATH ---
+        }
+
+        // Should not be reached if logic is correct, but as a fallback:
+        // LOG_W(L"    [SFEA] Fell through, proc not found: %p", lpProcNameOrOrdinal);
+        return nullptr; 
     }
 
     __declspec(noinline) void __stdcall shellcode(LPVOID lpParameter)
@@ -894,11 +991,14 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        my_MessageBoxW = (pfnMessageBoxW)ShellcodeFindExportAddress(sLibs.hUsr32, MessageBoxWFunction);
+        my_MessageBoxW = (pfnMessageBoxW)ShellcodeFindExportAddress(sLibs.hUsr32, cMessageBoxWFunction);
         if(my_MessageBoxW == nullptr) __debugbreak();
 
-        my_OutputDebugStringW = (pfnOutputDebugStringW)ShellcodeFindExportAddress(sLibs.hKERNELBASE, OutputDebugStringWFunction);
+        my_OutputDebugStringW = (pfnOutputDebugStringW)ShellcodeFindExportAddress(sLibs.hKERNELBASE, cOutputDebugStringWFunction);
         if(my_OutputDebugStringW == nullptr) __debugbreak();
+
+        my_LoadLibraryA = (pfnLoadLibraryA)ShellcodeFindExportAddress(sLibs.hKERNELBASE, cLoadLibraryAFunction);
+        if(my_LoadLibraryA == nullptr) __debugbreak();
             
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -948,6 +1048,8 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         LOG_W(L"-----------------------------------------------------------");
         
         #pragma endregion
+
+    //==========================================================================================
 
         #pragma region Relocations
 
@@ -1031,6 +1133,8 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         else LOG_W(L"No relocations required\n-----------------------------------------------------------");
         #pragma endregion
 
+    //==========================================================================================
+
         #pragma region TLSCallbacks
 
         LOG_W(L"            TLS_Callbacks");
@@ -1066,7 +1170,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                 {
                     uintptr_t rvaOfCallbackArray = vaOfCallbackArrayPointer - pOptionalHeader_injected_dll->ImageBase;
                     pActualMemoryAddressOfCallbackArray = (PIMAGE_TLS_CALLBACK*)(pResources->Injected_dll_base + rvaOfCallbackArray);
-                    
+
                     LOG_W(L"Delta is zero. AddressOfCallBacks field (VA 0x%p) rebased to callback array ptr 0x%p", (void*)vaOfCallbackArrayPointer, (void*)pActualMemoryAddressOfCallbackArray);
                 }
 
@@ -1093,6 +1197,95 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 
         LOG_W(L"            TLS_Callbacks\n-----------------------------------------------------------");
         #pragma endregion
+
+    //==========================================================================================
+
+        #pragma region Import Resolution
+
+        IMAGE_DATA_DIRECTORY importDirEntry = pOptionalHeader_injected_dll->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+        if(importDirEntry.VirtualAddress == 0 || importDirEntry.Size < sizeof(IMAGE_DATA_DIRECTORY)) LOG_W(L"No Import Directory found. No imports to resolve");
+        else
+        {
+            BYTE* pCurrentImportDescriptorAddress = pResources->Injected_dll_base + importDirEntry.VirtualAddress;
+            IMAGE_IMPORT_DESCRIPTOR* pDesc = (IMAGE_IMPORT_DESCRIPTOR*)pCurrentImportDescriptorAddress;
+
+            while(pDesc->Name != 0)
+            {
+
+                DWORD rvaOfDllName = pDesc->Name;
+                char* dllNameString = (char*)(pResources->Injected_dll_base + rvaOfDllName);
+
+                LOG_W(L"\n------Processing imports for DLL: [%hs]------", dllNameString);
+                
+                HANDLE hDependentdll = my_LoadLibraryA(dllNameString);
+                if(hDependentdll == NULL)
+                {
+                    LOG_W(L"FAILED to load dependent DLL: [%hs]");
+                    ++pDesc;
+                    continue;
+                }
+
+                IMAGE_THUNK_DATA* pImportNameTable = NULL;
+                IMAGE_THUNK_DATA* pImportAddressTable = NULL;
+
+                //The `OriginalFirstThunk` (OFT) contains the information (name or ordinal) used to look up the function
+                //The `FirstThunk` (IAT) is the table that gets *patched* with the actual resolved function addresses.
+                DWORD rvaOFT = pDesc->OriginalFirstThunk;
+                DWORD rvaIAT = pDesc->FirstThunk;
+
+                if(rvaOFT != 0) pImportNameTable = (IMAGE_THUNK_DATA*)(pResources->Injected_dll_base + rvaOFT);
+                else pImportNameTable = (IMAGE_THUNK_DATA*)(pResources->Injected_dll_base + rvaIAT);
+            
+                pImportAddressTable = (IMAGE_THUNK_DATA*)(pResources->Injected_dll_base + rvaIAT);
+                LOG_W(L"OFT RVA: 0x%X, IAT RVA: 0x%X. pINT at 0x%p, pIAT at 0x%p", rvaOFT, rvaIAT, pImportNameTable, pImportAddressTable);
+
+                while(pImportAddressTable->u1.AddressOfData != 0)
+                {
+                    FARPROC resolvedFunctionAddress = NULL;
+                    ULONGLONG currentThunkValue = pImportNameTable->u1.Function;
+
+                    if(IMAGE_SNAP_BY_ORDINAL(currentThunkValue))
+                    {
+                        WORD ordinalToImport = (WORD)IMAGE_ORDINAL(currentThunkValue);
+                        //LOG_W(L"  Attempting to import by Ordinal: %d", ordinalToImport);
+
+                        resolvedFunctionAddress = (FARPROC)(ShellcodeFindExportAddress(reinterpret_cast<HMODULE>(hDependentdll), (LPCSTR)ordinalToImport));
+
+                        if (!resolvedFunctionAddress) LOG_W(L"FAILED to resolve Ordinal %d from %hs", ordinalToImport, dllNameString);
+                        else LOG_W(L"Resolved Ordinal %d to 0x%p", ordinalToImport, (void*)resolvedFunctionAddress);
+                    }
+                    else    // Importing by Name
+                    {
+
+                        // u1.AddressOfData contains RVA to IMAGE_IMPORT_BY_NAME structure
+                        DWORD rvaImportByName = (DWORD)pImportAddressTable->u1.AddressOfData;
+                        IMAGE_IMPORT_BY_NAME* pImportByName = (IMAGE_IMPORT_BY_NAME*)(pResources->Injected_dll_base + rvaImportByName);
+
+                        char* functionName = pImportByName->Name;
+                        
+                        //LOG_W(L"Attempting to import by Name: '%hs'", functionName);
+                        resolvedFunctionAddress = (FARPROC)(ShellcodeFindExportAddress(reinterpret_cast<HMODULE>(hDependentdll), functionName));
+
+                        if (!resolvedFunctionAddress) LOG_W(L"[[FAILED]] to resolve Name '%hs' from %hs", functionName, dllNameString);
+                        else LOG_W(L"Resolved Name '%hs' to 0x%p", functionName, (void*)resolvedFunctionAddress);
+                    }
+
+                    pImportAddressTable->u1.Function = (ULONGLONG)resolvedFunctionAddress;
+                    
+                    ++pImportNameTable;
+                    ++pImportAddressTable;
+                }
+                
+                LOG_W(L"------Finished processing functions for DLL: [%hs]------\n", dllNameString);
+
+                ++pDesc;
+            }
+            LOG_W(L"All import descriptors processed");
+        }
+        LOG_W(L"            Import Resolution Finished\n-----------------------------------------------------------");  
+        #pragma endregion
+
+    //==========================================================================================
 
         LOG_W(L"[END_OF_SHELLCODE]");
         // __debugbreak();
