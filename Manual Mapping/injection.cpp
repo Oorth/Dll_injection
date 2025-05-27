@@ -409,11 +409,6 @@ NTSTATUS ManualMap(HANDLE hproc, std::vector <unsigned char> *downloaded_dll)
     //==========================================================================================
 
     norm("\n===========================================ManualMap===========================================");
-
-    fuk("!TLS Callbacks"); return 0;
-    fuk("!Import Resolution (IAT Patching)"); return 0;
-    fuk("!Memory Protections Hardening"); return 0;
-    fuk("!Call the Entry Point"); return 0;
     /*
         Cleanup & Stealth Tidy-Up
         Header Zeroing: overwrite the DOS/PE headers at pRemoteBase to hinder scanners.
@@ -1377,6 +1372,32 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 
     //==========================================================================================
 
+        #pragma region Call DLLMain
+
+        LOG_W(L"            Call DLLMain");
+
+        DWORD rvaOfEntryPoint = pOptionalHeader_injected_dll->AddressOfEntryPoint;
+        if(rvaOfEntryPoint == 0) LOG_W(L"DLL has no entry point, Skipping DllMain call");
+        else
+        {
+            BYTE* pActualAddressOfDllMain = rvaOfEntryPoint + pResources->Injected_dll_base;
+            LOG_W(L"Actual address of DLLmain -> 0x%p", pActualAddressOfDllMain);
+
+            typedef BOOL(WINAPI* PDLLMAIN_FUNC_PTR)(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved);
+            PDLLMAIN_FUNC_PTR pfnDllMainToCall = (PDLLMAIN_FUNC_PTR)pActualAddressOfDllMain;
+
+            BOOL bDllMainResult = 0;
+            bDllMainResult = pfnDllMainToCall((HINSTANCE)pResources->Injected_dll_base, DLL_PROCESS_ATTACH, NULL);
+
+            if(bDllMainResult) LOG_W(L"!!!!!!! Should have run !!!!!!!");
+            else LOG_W(L"Fuk...");
+        }
+        
+        LOG_W(L"            Call DLLMain\n-----------------------------------------------------------");
+        
+        #pragma endregion
+
+    //==========================================================================================
         LOG_W(L"[END_OF_SHELLCODE]");
         // __debugbreak();
     }
