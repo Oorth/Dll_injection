@@ -698,7 +698,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                             pFmt++; // consume 'X' or 'x'
                             // Arguments smaller than int are promoted to int when passed via va_arg
                             unsigned short val_short_arg = (unsigned short)va_arg(args, unsigned int);
-                            WCHAR* num_str_start = UllToHexW(val_short_arg, tempNumBuf + (sizeof(tempNumBuf)/sizeof(WCHAR)-1), (sizeof(tempNumBuf)/sizeof(WCHAR)-1) );
+                            WCHAR* num_str_start = UllToHexW(val_short_arg, tempNumBuf + (sizeof(tempNumBuf)/sizeof(WCHAR)-1), (sizeof(tempNumBuf)/sizeof(WCHAR)-1));
                             while(*num_str_start && remaining > 0)
                             {
                                 *pDest++ = *num_str_start++;
@@ -744,7 +744,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                         if(*pFmt == L'p') val_arg = (unsigned __int64)va_arg(args, void*);
                         else val_arg = (unsigned __int64)va_arg(args, unsigned int); // Promote to 64-bit for UllToHexW
 
-                        WCHAR* num_str_start = UllToHexW(val_arg, tempNumBuf + (sizeof(tempNumBuf)/sizeof(WCHAR)-1), (sizeof(tempNumBuf)/sizeof(WCHAR)-1) );
+                        WCHAR* num_str_start = UllToHexW(val_arg, tempNumBuf + (sizeof(tempNumBuf)/sizeof(WCHAR)-1), (sizeof(tempNumBuf)/sizeof(WCHAR)-1));
                         while(*num_str_start && remaining > 0)
                         {
                             *pDest++ = *num_str_start++;
@@ -757,7 +757,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                     {
                         int val_arg = va_arg(args, int);
                         
-                        WCHAR* num_str_start = IntToDecW(val_arg, tempNumBuf + (sizeof(tempNumBuf)/sizeof(WCHAR)-1), (sizeof(tempNumBuf)/sizeof(WCHAR)-1) );
+                        WCHAR* num_str_start = IntToDecW(val_arg, tempNumBuf + (sizeof(tempNumBuf)/sizeof(WCHAR)-1), (sizeof(tempNumBuf)/sizeof(WCHAR)-1));
                         while(*num_str_start && remaining > 0)
                         {
                             *pDest++ = *num_str_start++;
@@ -795,7 +795,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         return (int)(pDest - pszDest); // Number of characters written
     }
 
-
+    
     __declspec(noinline) static void* __stdcall ShellcodeFindExportAddress(HMODULE hModule, LPCSTR lpProcNameOrOrdinal, pfnLoadLibraryA pLoadLibraryAFunc)
     {
         //-----------
@@ -818,7 +818,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 
         //-----------
 
-        // --- LOGIC TO DIFFERENTIATE NAME VS ORDINAL ---
+        // --- DIFFERENTIATE NAME VS ORDINAL ---
         bool isOrdinalLookup = false;
         WORD ordinalToFind = 0;
 
@@ -845,7 +845,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         {
             if (ordinalToFind < exp->Base || (ordinalToFind - exp->Base) >= exp->NumberOfFunctions)
             {
-                LOG_W(L"Ordinal %hu is out of range (Base: %u, NumberOfFunctions: %u)", ordinalToFind, exp->Base, exp->NumberOfFunctions);
+                LOG_W(L"    [SFEA] Ordinal %hu is out of range (Base: %u, NumberOfFunctions: %u)", ordinalToFind, exp->Base, exp->NumberOfFunctions);
                 return nullptr;
             }
             
@@ -853,23 +853,6 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
             if (functionIndexInArray >= exp->NumberOfFunctions) return nullptr;
             
             funcRVA = functions[functionIndexInArray];
-            if (funcRVA == 0)                           // check for a valid export
-            {   
-                LOG_W(L"RVA for ordinal %hu (index %u) is 0.", ordinalToFind, functionIndexInArray);
-                return nullptr;
-            }
-
-            BYTE* pAddr = base + funcRVA;
-
-            // Forwarded export check: if the RVA points back into the export directory itself, it's a forwarder string
-            if (funcRVA >= pExportDataDir->VirtualAddress && funcRVA < (pExportDataDir->VirtualAddress + pExportDataDir->Size))
-            {
-                char* forwardedName = (char*)pAddr;
-                LOG_W(L"Ordinal %hu is forwarded to '%hs'", ordinalToFind, forwardedName);
-                
-                return nullptr;
-            }
-            return (void*)pAddr;
         }
         else
         {
@@ -880,6 +863,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
             DWORD* nameRVAs = (DWORD*)(base + exp->AddressOfNames);          // RVAs to ASCII name strings
             WORD* nameOrdinals = (WORD*)(base + exp->AddressOfNameOrdinals); // Indices into the 'functions' array (NOT necessarily the export ordinals themselves)
 
+            bool foundByName = false;
             for (DWORD i = 0; i < exp->NumberOfNames; ++i)
             {
                 char* currentExportName = (char*)(base + nameRVAs[i]);
@@ -895,26 +879,116 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                         return nullptr;
                     }
 
-                    DWORD funcRVA = functions[functionIndexInArray];
+                    funcRVA = functions[functionIndexInArray];
                     if (funcRVA == 0) return nullptr; // Should not happen for a named export pointing to a valid index
 
-                    BYTE* addr = base + funcRVA;
-
-                    // Forwarded export check
-                    if (funcRVA >= pExportDataDir->VirtualAddress && funcRVA < (pExportDataDir->VirtualAddress + pExportDataDir->Size))
-                    {
-                        char* forwardedName = (char*)addr;
-                        LOG_W(L"[[!!WARN!!]]Name '%hs' is forwarded to '%hs'", funcName, forwardedName);
-                        return nullptr;         // Forwarding not handled
-                    }
-                    return (void*)addr;
+                    foundByName = true;
+                    break;
                 }
             }
         
-            LOG_W(L"Name '%hs' not found in export table.", funcName);
-            return nullptr;
+            if(!foundByName)
+            {
+                LOG_W(L"Name '%hs' not found in export table.", funcName);
+                return nullptr;
+            }
         }
-        return nullptr; 
+
+        if (funcRVA == 0)
+        {
+            LOG_W(L"RVA for %p in module 0x%p is zero.", lpProcNameOrOrdinal, hModule);
+            return nullptr; // No valid RVA found
+        } 
+
+        BYTE* addr = base + funcRVA;
+
+        // Check if this RVA points within the export directory itself (indicates a forwarded export)
+        if (funcRVA >= pExportDataDir->VirtualAddress && funcRVA < (pExportDataDir->VirtualAddress + pExportDataDir->Size)) 
+        {
+            // This is a forwarder string like "OTHERDLL.OtherFunction" or "OTHERDLL.#123" 
+            char* originalForwarderString = (char*)addr; // The RVA points to this string
+            LOG_W(L"    [SFEA] Proc %p from module 0x%p is forwarded to: '%hs'", lpProcNameOrOrdinal, hModule, originalForwarderString);
+
+            if (!pLoadLibraryAFunc)
+            {
+                LOG_W(L"    [SFEA] pLoadLibraryAFunc is nullptr, cannot resolve forwarder for %hs", originalForwarderString);
+                return nullptr;
+            }
+
+            // --- PARSING: Work with a local, writable copy ---
+            char localForwarderBuffer[256];
+            UINT k_copy = 0;
+            
+            char* pOrig = originalForwarderString;
+            while (*pOrig != '\0' && k_copy < (sizeof(localForwarderBuffer) - 1))
+            {
+                localForwarderBuffer[k_copy++] = *pOrig++;
+            }
+            localForwarderBuffer[k_copy] = '\0';
+
+
+            char* dotSeparatorInLocal = nullptr;
+            char* tempParserPtr = localForwarderBuffer;
+
+            while (*tempParserPtr != '\0') 
+            {
+                if (*tempParserPtr == '.')
+                {
+                    dotSeparatorInLocal = tempParserPtr;
+                    break;
+                }
+                ++tempParserPtr;
+            }
+            if (!dotSeparatorInLocal || dotSeparatorInLocal == localForwarderBuffer) { LOG_W(L"    [SFEA] Malformed forwarder string (in copy): '%hs'", localForwarderBuffer); return nullptr; }
+
+
+            *dotSeparatorInLocal = '\0'; 
+            char* forwardedFuncNameOrOrdinalStr = dotSeparatorInLocal + 1;
+            if (*forwardedFuncNameOrOrdinalStr == '\0') { LOG_W(L"    [SFEA] Malformed forwarder string (nothing after dot in copy): '%hs'", localForwarderBuffer); return nullptr; }
+            
+            char* forwardedDllName = localForwarderBuffer;
+            HMODULE hForwardedModule = pLoadLibraryAFunc(forwardedDllName);
+            if (!hForwardedModule)
+            {
+                LOG_W(L"    [SFEA] Failed to load forwarded DLL: '%hs' (original forwarder was: '%hs')", forwardedDllName, originalForwarderString);
+                return nullptr;
+            }
+
+            LOG_W(L"    [SFEA] Successfully loaded forwarded DLL: '%hs' to 0x%p", forwardedDllName, (void*)hForwardedModule);
+
+            LPCSTR finalProcNameToResolve;
+            if (*forwardedFuncNameOrOrdinalStr == '#') // Forwarding to an ordinal, e.g., "#123"
+            {
+                WORD fwdOrdinal = 0;
+                char* pNum = forwardedFuncNameOrOrdinalStr + 1; // Skip '#'
+                while (*pNum >= '0' && *pNum <= '9')
+                {
+                    fwdOrdinal = fwdOrdinal * 10 + (*pNum - '0');
+                    pNum++;
+                }
+
+                // Check if any digits were actually parsed for the ordinal
+                if (pNum == (forwardedFuncNameOrOrdinalStr + 1) && fwdOrdinal == 0)  // No digits after #, or #0 was not intended
+                {
+                    if (*(forwardedFuncNameOrOrdinalStr + 1) != '0' || *(forwardedFuncNameOrOrdinalStr + 2) != '\0')    // Allow "#0" but not "#" or "#abc"
+                    {
+                        LOG_W(L"    [SFEA] Invalid forwarded ordinal format (no valid number after #): %hs", forwardedFuncNameOrOrdinalStr);
+                        return nullptr;
+                    }
+                }
+                
+                finalProcNameToResolve = (LPCSTR)(ULONG_PTR)fwdOrdinal;
+                LOG_W(L"    [SFEA] Forwarding to ordinal %hu in '%hs'", fwdOrdinal, forwardedDllName);
+            } 
+            else // Forwarding to a name
+            {
+                finalProcNameToResolve = forwardedFuncNameOrOrdinalStr;
+                LOG_W(L"    [SFEA] Forwarding to name '%hs' in '%hs'", finalProcNameToResolve, forwardedDllName);
+            }
+
+            return ShellcodeFindExportAddress(hForwardedModule, finalProcNameToResolve, pLoadLibraryAFunc);
+        }       
+        else return (void*)addr;
     }
 
     __declspec(noinline) void __stdcall shellcode(LPVOID lpParameter)
@@ -985,18 +1059,18 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
             }
             current = current->Flink;
         }
-        if(sLibs.hUsr32 == nullptr || sLibs.hKERNELBASE == nullptr) __debugbreak();
+        if(sLibs.hUsr32 == NULL || sLibs.hKERNELBASE == NULL) __debugbreak();
         
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         my_MessageBoxW = (pfnMessageBoxW)ShellcodeFindExportAddress(sLibs.hUsr32, cMessageBoxWFunction, my_LoadLibraryA);
-        if(my_MessageBoxW == nullptr) __debugbreak();
+        if(my_MessageBoxW == NULL) __debugbreak();
 
         my_OutputDebugStringW = (pfnOutputDebugStringW)ShellcodeFindExportAddress(sLibs.hKERNELBASE, cOutputDebugStringWFunction, my_LoadLibraryA);
-        if(my_OutputDebugStringW == nullptr) __debugbreak();
+        if(my_OutputDebugStringW == NULL) __debugbreak();
 
         my_LoadLibraryA = (pfnLoadLibraryA)ShellcodeFindExportAddress(sLibs.hKERNELBASE, cLoadLibraryAFunction, my_LoadLibraryA);
-        if(my_LoadLibraryA == nullptr) __debugbreak();
+        if(my_LoadLibraryA == NULL) __debugbreak();
             
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1237,6 +1311,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                 pImportAddressTable = (IMAGE_THUNK_DATA*)(pResources->Injected_dll_base + rvaIAT);
                 LOG_W(L"OFT RVA: 0x%X, IAT RVA: 0x%X. pINT at 0x%p, pIAT at 0x%p", rvaOFT, rvaIAT, pImportNameTable, pImportAddressTable);
 
+                UINT SuccessImportResolution = 0, FailImportResolution = 0;
                 while(pImportAddressTable->u1.AddressOfData != 0)
                 {
                     FARPROC resolvedFunctionAddress = NULL;
@@ -1249,8 +1324,16 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
 
                         resolvedFunctionAddress = (FARPROC)(ShellcodeFindExportAddress(reinterpret_cast<HMODULE>(hDependentdll), (LPCSTR)ordinalToImport, my_LoadLibraryA));
 
-                        if (!resolvedFunctionAddress) LOG_W(L"FAILED to resolve Ordinal %d from %hs", ordinalToImport, dllNameString);
-                        else LOG_W(L"Resolved Ordinal %d to 0x%p", ordinalToImport, (void*)resolvedFunctionAddress);
+                        if (!resolvedFunctionAddress)
+                        {
+                            LOG_W(L"FAILED to resolve Ordinal %d from %hs", ordinalToImport, dllNameString);
+                            ++FailImportResolution;
+                        }
+                        else
+                        {
+                            LOG_W(L"Resolved Ordinal %d to 0x%p", ordinalToImport, (void*)resolvedFunctionAddress);
+                            ++SuccessImportResolution;
+                        }
                     }
                     else    // Importing by Name
                     {
@@ -1264,8 +1347,17 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                         //LOG_W(L"Attempting to import by Name: '%hs'", functionName);
                         resolvedFunctionAddress = (FARPROC)(ShellcodeFindExportAddress(reinterpret_cast<HMODULE>(hDependentdll), functionName, my_LoadLibraryA));
 
-                        if (!resolvedFunctionAddress) LOG_W(L"[[FAILED]] to resolve Name '%hs' from %hs", functionName, dllNameString);
-                        else LOG_W(L"Resolved Name '%hs' to 0x%p", functionName, (void*)resolvedFunctionAddress);
+                        if (!resolvedFunctionAddress)
+                        {
+                            LOG_W(L"[[FAILED]] to resolve Name '%hs' from %hs", functionName, dllNameString);
+                            ++FailImportResolution;
+                            
+                        }
+                        else
+                        {
+                            LOG_W(L"Resolved Name '%hs' to 0x%p", functionName, (void*)resolvedFunctionAddress);
+                            ++SuccessImportResolution;
+                        }
                     }
 
                     pImportAddressTable->u1.Function = (ULONGLONG)resolvedFunctionAddress;
@@ -1274,11 +1366,11 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                     ++pImportAddressTable;
                 }
                 
-                LOG_W(L"------Finished processing functions for DLL: [%hs]------\n", dllNameString);
+                LOG_W(L"DLL-> [%hs] Success[%d] Fail[%d]------\n", dllNameString, SuccessImportResolution, FailImportResolution);
 
                 ++pDesc;
             }
-            LOG_W(L"All import descriptors processed");
+            LOG_W(L"\nAll import descriptors processed");
         }
         LOG_W(L"            Import Resolution Finished\n-----------------------------------------------------------");  
         #pragma endregion
