@@ -796,8 +796,10 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
     }
 
 
-    __declspec(noinline) static void* __stdcall ShellcodeFindExportAddress(HMODULE hModule, LPCSTR lpProcNameOrOrdinal)
+    __declspec(noinline) static void* __stdcall ShellcodeFindExportAddress(HMODULE hModule, LPCSTR lpProcNameOrOrdinal, pfnLoadLibraryA pLoadLibraryAFunc)
     {
+        //-----------
+
         if(!hModule) return nullptr;
 
         BYTE* base = (BYTE*)hModule;
@@ -814,14 +816,15 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         IMAGE_EXPORT_DIRECTORY* exp = (IMAGE_EXPORT_DIRECTORY*)(base + pExportDataDir->VirtualAddress);
         DWORD* functions = (DWORD*)(base + exp->AddressOfFunctions); // RVAs to function bodies or forwarders
 
+        //-----------
 
         // --- LOGIC TO DIFFERENTIATE NAME VS ORDINAL ---
         bool isOrdinalLookup = false;
         WORD ordinalToFind = 0;
 
         #if defined(_WIN64)
-            if (((ULONG_PTR)lpProcNameOrOrdinal >> 16) == 0)
-            { // High bits of pointer are zero
+            if (((ULONG_PTR)lpProcNameOrOrdinal >> 16) == 0)    // High bits of pointer are zero
+            {
                 isOrdinalLookup = true;
                 ordinalToFind = LOWORD((ULONG_PTR)lpProcNameOrOrdinal);
             }
@@ -834,45 +837,45 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                 ordinalToFind = LOWORD((DWORD)(ULONG_PTR)lpProcNameOrOrdinal);
             }
         #endif
-            // --- END DIFFERENTIATION LOGIC ---
+        // --- END DIFFERENTIATION LOGIC ---
 
+        DWORD funcRVA = 0; // RVA of the function/forwarder
 
         if (isOrdinalLookup)
         {
             if (ordinalToFind < exp->Base || (ordinalToFind - exp->Base) >= exp->NumberOfFunctions)
             {
-                // LOG_W(L"Ordinal %hu is out of range (Base: %u, NumberOfFunctions: %u)",
-                //       ordinalToFind, exp->Base, exp->NumberOfFunctions);
-                return nullptr; // Ordinal is not in the valid range for this export directory
+                LOG_W(L"Ordinal %hu is out of range (Base: %u, NumberOfFunctions: %u)", ordinalToFind, exp->Base, exp->NumberOfFunctions);
+                return nullptr;
             }
             
             DWORD functionIndexInArray = ordinalToFind - exp->Base;
-            DWORD funcRVA = functions[functionIndexInArray];
-
-            if (funcRVA == 0)   // This RVA should not be 0 for a valid export, but check.
+            if (functionIndexInArray >= exp->NumberOfFunctions) return nullptr;
+            
+            funcRVA = functions[functionIndexInArray];
+            if (funcRVA == 0)                           // check for a valid export
             {   
-                // LOG_W(L"RVA for ordinal %hu (index %u) is 0.", ordinalToFind, functionIndexInArray);
+                LOG_W(L"RVA for ordinal %hu (index %u) is 0.", ordinalToFind, functionIndexInArray);
                 return nullptr;
             }
 
-            BYTE* addr = base + funcRVA;
+            BYTE* pAddr = base + funcRVA;
 
             // Forwarded export check: if the RVA points back into the export directory itself, it's a forwarder string
             if (funcRVA >= pExportDataDir->VirtualAddress && funcRVA < (pExportDataDir->VirtualAddress + pExportDataDir->Size))
             {
-                // char* forwardedName = (char*)addr;
-                // LOG_W(LOrdinal %hu is forwarded to '%hs'. Forwarding not implemented here.", ordinalToFind, forwardedName);
-                return nullptr; // This basic version doesn't resolve forwarded exports
+                char* forwardedName = (char*)pAddr;
+                LOG_W(L"Ordinal %hu is forwarded to '%hs'", ordinalToFind, forwardedName);
+                
+                return nullptr;
             }
-            return (void*)addr;
+            return (void*)pAddr;
         }
         else
         {
             // --- NAME LOOKUP PATH ---
-            LPCSTR funcName = lpProcNameOrOrdinal; // Now we know it's intended as a name
-            if (!funcName || *funcName == '\0') return nullptr; // Basic check for null or empty name string
-
-            // LOG_W(L"    [SFEA] Looking up by name: %hs", funcName); // Your logging macro
+            LPCSTR funcName = lpProcNameOrOrdinal;
+            if (!funcName || *funcName == '\0') return nullptr;
 
             DWORD* nameRVAs = (DWORD*)(base + exp->AddressOfNames);          // RVAs to ASCII name strings
             WORD* nameOrdinals = (WORD*)(base + exp->AddressOfNameOrdinals); // Indices into the 'functions' array (NOT necessarily the export ordinals themselves)
@@ -883,13 +886,12 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
             
                 if (isSame(currentExportName, funcName)) 
                 {
-                    WORD functionIndexInArray = nameOrdinals[i]; // This is the index into the 'functions' array
+                    WORD functionIndexInArray = nameOrdinals[i];            //index into the 'functions' array
             
                     // Bounds check for the index obtained from nameOrdinals
                     if (functionIndexInArray >= exp->NumberOfFunctions)
                     {
-                        // LOG_W(L"    [SFEA] Name '%hs' gave an ordinal array index %hu out of bounds (%u).",
-                        //       funcName, functionIndexInArray, exp->NumberOfFunctions);
+                        LOG_W(L"Name '%hs' gave an ordinal array index %hu out of bounds (%u).", funcName, functionIndexInArray, exp->NumberOfFunctions);
                         return nullptr;
                     }
 
@@ -901,21 +903,17 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                     // Forwarded export check
                     if (funcRVA >= pExportDataDir->VirtualAddress && funcRVA < (pExportDataDir->VirtualAddress + pExportDataDir->Size))
                     {
-                        // char* forwardedName = (char*)addr;
-                        // LOG_W(L"    [SFEA] Name '%hs' is forwarded to '%hs'. Forwarding not implemented here.", funcName, forwardedName);
-                        return nullptr; // Forwarding not handled
+                        char* forwardedName = (char*)addr;
+                        LOG_W(L"[[!!WARN!!]]Name '%hs' is forwarded to '%hs'", funcName, forwardedName);
+                        return nullptr;         // Forwarding not handled
                     }
                     return (void*)addr;
                 }
             }
         
-            // LOG_W(L"    [SFEA] Name '%hs' not found in export table.", funcName);
-            return nullptr; // Name not found
-            // --- END NAME LOOKUP PATH ---
+            LOG_W(L"Name '%hs' not found in export table.", funcName);
+            return nullptr;
         }
-
-        // Should not be reached if logic is correct, but as a fallback:
-        // LOG_W(L"    [SFEA] Fell through, proc not found: %p", lpProcNameOrOrdinal);
         return nullptr; 
     }
 
@@ -991,13 +989,13 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        my_MessageBoxW = (pfnMessageBoxW)ShellcodeFindExportAddress(sLibs.hUsr32, cMessageBoxWFunction);
+        my_MessageBoxW = (pfnMessageBoxW)ShellcodeFindExportAddress(sLibs.hUsr32, cMessageBoxWFunction, my_LoadLibraryA);
         if(my_MessageBoxW == nullptr) __debugbreak();
 
-        my_OutputDebugStringW = (pfnOutputDebugStringW)ShellcodeFindExportAddress(sLibs.hKERNELBASE, cOutputDebugStringWFunction);
+        my_OutputDebugStringW = (pfnOutputDebugStringW)ShellcodeFindExportAddress(sLibs.hKERNELBASE, cOutputDebugStringWFunction, my_LoadLibraryA);
         if(my_OutputDebugStringW == nullptr) __debugbreak();
 
-        my_LoadLibraryA = (pfnLoadLibraryA)ShellcodeFindExportAddress(sLibs.hKERNELBASE, cLoadLibraryAFunction);
+        my_LoadLibraryA = (pfnLoadLibraryA)ShellcodeFindExportAddress(sLibs.hKERNELBASE, cLoadLibraryAFunction, my_LoadLibraryA);
         if(my_LoadLibraryA == nullptr) __debugbreak();
             
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1220,7 +1218,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                 HANDLE hDependentdll = my_LoadLibraryA(dllNameString);
                 if(hDependentdll == NULL)
                 {
-                    LOG_W(L"FAILED to load dependent DLL: [%hs]");
+                    LOG_W(L"FAILED to load dependent DLL: [%hs]", dllNameString);
                     ++pDesc;
                     continue;
                 }
@@ -1249,7 +1247,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                         WORD ordinalToImport = (WORD)IMAGE_ORDINAL(currentThunkValue);
                         //LOG_W(L"  Attempting to import by Ordinal: %d", ordinalToImport);
 
-                        resolvedFunctionAddress = (FARPROC)(ShellcodeFindExportAddress(reinterpret_cast<HMODULE>(hDependentdll), (LPCSTR)ordinalToImport));
+                        resolvedFunctionAddress = (FARPROC)(ShellcodeFindExportAddress(reinterpret_cast<HMODULE>(hDependentdll), (LPCSTR)ordinalToImport, my_LoadLibraryA));
 
                         if (!resolvedFunctionAddress) LOG_W(L"FAILED to resolve Ordinal %d from %hs", ordinalToImport, dllNameString);
                         else LOG_W(L"Resolved Ordinal %d to 0x%p", ordinalToImport, (void*)resolvedFunctionAddress);
@@ -1264,7 +1262,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
                         char* functionName = pImportByName->Name;
                         
                         //LOG_W(L"Attempting to import by Name: '%hs'", functionName);
-                        resolvedFunctionAddress = (FARPROC)(ShellcodeFindExportAddress(reinterpret_cast<HMODULE>(hDependentdll), functionName));
+                        resolvedFunctionAddress = (FARPROC)(ShellcodeFindExportAddress(reinterpret_cast<HMODULE>(hDependentdll), functionName, my_LoadLibraryA));
 
                         if (!resolvedFunctionAddress) LOG_W(L"[[FAILED]] to resolve Name '%hs' from %hs", functionName, dllNameString);
                         else LOG_W(L"Resolved Name '%hs' to 0x%p", functionName, (void*)resolvedFunctionAddress);
