@@ -1010,27 +1010,10 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
     {
         PDLLMAIN_THREAD_PARAMS params = (PDLLMAIN_THREAD_PARAMS)lpParam;
 
-        if (!params)
+        if (!params || !params->pfnDllMain || !params->hinstDLL)
         {
-            // If lpParam itself is null, major issue.
-            // Cannot use LOG_W here easily as it relies on shellcode's global buffer
-            // and OutputDebugStringW function pointer, which might not be set up
-            // for this new thread's context immediately or safely.
-            // For robustness, this thread would just exit.
-            return 1; // Indicate error
+            return 1;
         }
-
-        if (!params->pfnDllMain)
-        {
-            // pfnDllMain pointer is null within the params struct.
-            return 1; // Indicate error
-        }
-
-        if (!params->hinstDLL)
-        {
-            // hinstDLL is null, also problematic.
-            return 1; // Indicate error
-        }     
 
         BOOL result = params->pfnDllMain(params->hinstDLL, DLL_PROCESS_ATTACH, NULL);
         return result ? 0 : 1;
