@@ -495,13 +495,28 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
             } \
         } while (0)
 
+
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     typedef int(WINAPI* pfnMessageBoxW)(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
     typedef void(WINAPI* pfnOutputDebugStringW)(LPCWSTR lpOutputString);
     typedef HRESULT(WINAPI* pfnStringCchPrintfW)(LPWSTR pszDest, size_t cchDest, LPCWSTR pszFormat, ...);
-    typedef VOID(NTAPI *PIMAGE_TLS_CALLBACK)(PVOID DllHandle, DWORD Reason, PVOID Reserved);
+    typedef VOID(NTAPI* PIMAGE_TLS_CALLBACK)(PVOID DllHandle, DWORD Reason, PVOID Reserved);
     typedef HMODULE(WINAPI* pfnLoadLibraryA)(LPCSTR lpLibFileName);
+    typedef HANDLE(WINAPI* pfnCreateThread)(LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwStackSize, LPTHREAD_START_ROUTINE lpStartAddress, __drv_aliasesMem LPVOID lpParameter, DWORD dwCreationFlags, LPDWORD lpThreadId);
+    typedef BOOL(WINAPI* pfnDLLMain)(HINSTANCE, DWORD, LPVOID);
+    typedef BOOL(WINAPI* pfnCloseHandle)(HANDLE hObject);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    typedef struct _DLLMAIN_THREAD_PARAMS
+    {
+        pfnDLLMain pfnDllMain;
+        HINSTANCE hinstDLL;
+        // DWORD fdwReason;
+        // LPVOID lpvReserved;
+        // HANDLE hCompletionEvent; // For advanced synchronization
+    } DLLMAIN_THREAD_PARAMS, *PDLLMAIN_THREAD_PARAMS;    
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -512,14 +527,19 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
     __declspec(allocate(".stub")) static const CHAR cMessageBoxWFunction[] = "MessageBoxW";
     __declspec(allocate(".stub")) static const CHAR cOutputDebugStringWFunction[] = "OutputDebugStringW";
     __declspec(allocate(".stub")) static const CHAR cLoadLibraryAFunction[] = "LoadLibraryA";
+    __declspec(allocate(".stub")) static const CHAR cCreateThreadFunction[] = "CreateThread";
+    __declspec(allocate(".stub")) static const CHAR cCloseHandleFunction[] = "CloseHandle";
 
     __declspec(allocate(".stub")) pfnMessageBoxW my_MessageBoxW = nullptr;
     __declspec(allocate(".stub")) pfnOutputDebugStringW my_OutputDebugStringW = nullptr;
     __declspec(allocate(".stub")) pfnLoadLibraryA my_LoadLibraryA = nullptr;
+    __declspec(allocate(".stub")) pfnCreateThread my_CreateThread = nullptr;
+    __declspec(allocate(".stub")) pfnCloseHandle my_CloseHandle = nullptr;
 
     __declspec(allocate(".stub")) static const WCHAR g_hexChars[] = L"0123456789ABCDEF";
     __declspec(allocate(".stub")) static WCHAR g_shellcodeLogBuffer[256];
 
+    __declspec(allocate(".stub")) static DLLMAIN_THREAD_PARAMS g_dllMainParams;
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     __declspec(noinline) void __stdcall HelperSplitFilename(const WCHAR* full, SIZE_T fullLen, const WCHAR** outName, SIZE_T* outLen)
@@ -986,6 +1006,36 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         else return (void*)addr;
     }
 
+    __declspec(noinline) static DWORD WINAPI DllMainThreadRunner(LPVOID lpParam)
+    {
+        PDLLMAIN_THREAD_PARAMS params = (PDLLMAIN_THREAD_PARAMS)lpParam;
+
+        if (!params)
+        {
+            // If lpParam itself is null, major issue.
+            // Cannot use LOG_W here easily as it relies on shellcode's global buffer
+            // and OutputDebugStringW function pointer, which might not be set up
+            // for this new thread's context immediately or safely.
+            // For robustness, this thread would just exit.
+            return 1; // Indicate error
+        }
+
+        if (!params->pfnDllMain)
+        {
+            // pfnDllMain pointer is null within the params struct.
+            return 1; // Indicate error
+        }
+
+        if (!params->hinstDLL)
+        {
+            // hinstDLL is null, also problematic.
+            return 1; // Indicate error
+        }     
+
+        BOOL result = params->pfnDllMain(params->hinstDLL, DLL_PROCESS_ATTACH, NULL);
+        return result ? 0 : 1;
+    }
+
     __declspec(noinline) void __stdcall shellcode(LPVOID lpParameter)
     {
         #pragma region Shellcode_setup
@@ -1017,7 +1067,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
             PVOID DllBase;
             UNICODE_STRING FullDllName;
             UNICODE_STRING BaseDllName;
-        } LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;
+        } LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;    
 
         _RESOURCES* pResources = (_RESOURCES*)lpParameter;
 
@@ -1058,14 +1108,20 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        my_MessageBoxW = (pfnMessageBoxW)ShellcodeFindExportAddress(sLibs.hUsr32, cMessageBoxWFunction, my_LoadLibraryA);
-        if(my_MessageBoxW == NULL) __debugbreak();
-
         my_OutputDebugStringW = (pfnOutputDebugStringW)ShellcodeFindExportAddress(sLibs.hKERNELBASE, cOutputDebugStringWFunction, my_LoadLibraryA);
         if(my_OutputDebugStringW == NULL) __debugbreak();
 
+        my_MessageBoxW = (pfnMessageBoxW)ShellcodeFindExportAddress(sLibs.hUsr32, cMessageBoxWFunction, my_LoadLibraryA);
+        if(my_MessageBoxW == NULL) __debugbreak();
+
         my_LoadLibraryA = (pfnLoadLibraryA)ShellcodeFindExportAddress(sLibs.hKERNELBASE, cLoadLibraryAFunction, my_LoadLibraryA);
         if(my_LoadLibraryA == NULL) __debugbreak();
+
+        my_CreateThread = (pfnCreateThread)ShellcodeFindExportAddress(sLibs.hKERNELBASE, cCreateThreadFunction, my_LoadLibraryA);
+        if(my_CreateThread == NULL) __debugbreak();
+
+        my_CloseHandle = (pfnCloseHandle)ShellcodeFindExportAddress(sLibs.hKERNELBASE, cCloseHandleFunction, my_LoadLibraryA);
+        if(my_CloseHandle == NULL) __debugbreak();
             
         ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1116,7 +1172,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         
         #pragma endregion
 
-    //==========================================================================================
+        //==========================================================================================
 
         #pragma region Relocations
 
@@ -1200,7 +1256,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         else LOG_W(L"No relocations required\n-----------------------------------------------------------");
         #pragma endregion
 
-    //==========================================================================================
+        //==========================================================================================
 
         #pragma region TLSCallbacks
 
@@ -1265,7 +1321,7 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         LOG_W(L"            TLS_Callbacks\n-----------------------------------------------------------");
         #pragma endregion
 
-    //==========================================================================================
+        //==========================================================================================
 
         #pragma region Import Resolution
 
@@ -1370,34 +1426,36 @@ static void* FindExportAddress(HMODULE hModule, const char* funcName)
         LOG_W(L"            Import Resolution Finished\n-----------------------------------------------------------");  
         #pragma endregion
 
-    //==========================================================================================
+        //==========================================================================================
 
         #pragma region Call DLLMain
 
-        LOG_W(L"            Call DLLMain");
+        LOG_W(L"            Call DllMain");
 
         DWORD rvaOfEntryPoint = pOptionalHeader_injected_dll->AddressOfEntryPoint;
-        if(rvaOfEntryPoint == 0) LOG_W(L"DLL has no entry point, Skipping DllMain call");
+
+        if (rvaOfEntryPoint == 0) LOG_W(L"DLL has no entry point. Skipping DllMain call.");
         else
         {
-            BYTE* pActualAddressOfDllMain = rvaOfEntryPoint + pResources->Injected_dll_base;
-            LOG_W(L"Actual address of DLLmain -> 0x%p", pActualAddressOfDllMain);
+            pfnDLLMain pfnDllMain = (pfnDLLMain)(pResources->Injected_dll_base + rvaOfEntryPoint);
+            LOG_W(L"Calculated DllMain address: 0x%p", (void*)pfnDllMain);
 
-            typedef BOOL(WINAPI* PDLLMAIN_FUNC_PTR)(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved);
-            PDLLMAIN_FUNC_PTR pfnDllMainToCall = (PDLLMAIN_FUNC_PTR)pActualAddressOfDllMain;
+            g_dllMainParams.pfnDllMain = pfnDllMain;
+            g_dllMainParams.hinstDLL = (HINSTANCE)pResources->Injected_dll_base;
 
-            BOOL bDllMainResult = 0;
-            bDllMainResult = pfnDllMainToCall((HINSTANCE)pResources->Injected_dll_base, DLL_PROCESS_ATTACH, NULL);
+            DWORD dwDllMainThreadId = 0; 
+            LOG_W(L"Creating new thread to execute DllMain (0x%p) via DllMainThreadRunner", (void*)pfnDllMain);
+            HANDLE hDllMainThread = my_CreateThread(NULL, 0, DllMainThreadRunner, &g_dllMainParams, 0, &dwDllMainThreadId);
 
-            if(bDllMainResult) LOG_W(L"!!!!!!! Should have run !!!!!!!");
-            else LOG_W(L"Fuk...");
+            if (hDllMainThread) LOG_W(L"DllMain thread launched Thread id-> %d Handle-> 0x%p", dwDllMainThreadId, (void*)hDllMainThread);
+            else LOG_W(L"!!!! FAILED to create thread for DllMain. DLL will not initialize. !!!!");
         }
-        
-        LOG_W(L"            Call DLLMain\n-----------------------------------------------------------");
-        
+        LOG_W(L"            DllMain Call Attempted\n-----------------------------------------------------------");
         #pragma endregion
 
-    //==========================================================================================
+        //==========================================================================================
+        
+
         LOG_W(L"[END_OF_SHELLCODE]");
         // __debugbreak();
     }
